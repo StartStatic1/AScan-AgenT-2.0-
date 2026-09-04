@@ -112,6 +112,8 @@ def headers():
     return h
 
 def session(server=None, proxy=None):
+    if requests is None:
+        raise RuntimeError('requests nao disponivel')
     key = '%s_%s' % (server, proxy)
     with SESS_L:
         if key in SESS and time.time() - SESS[key][1] < 300:
@@ -221,7 +223,6 @@ def build_hit(server, item, data):
     canais, filmes, series = fetch_counts(server, user, pwd)
     exp = ui.get('exp_date', '0')
     ilim = exp in ('0', 'null', 'None', '')
-    dias = 0
     if not ilim:
         try:
             dias = int((int(exp) - time.time()) / 86400)
@@ -325,8 +326,9 @@ class RCard(BoxLayout):
         self.bg.size = self.size
 
 class Btn(Button):
-    def __init__(self, kind='blue', **kw):
+    def __init__(self, text='', kind='blue', **kw):
         h = kw.pop('height', dp(46))
+        kw['text'] = text if text != '' else kw.get('text', '')
         super().__init__(**kw)
         self.background_normal = ''
         self.background_down = ''
@@ -384,7 +386,7 @@ class LogBox(Label):
 class AScanApp(App):
     scan_running = BooleanProperty(False)
     scan_paused = BooleanProperty(False)
-    status_txt = StringProperty('[color=22C55E]\u25cf[/color] Pronto')
+    status_txt = StringProperty('[color=22C55E]*[/color] Pronto')
 
     def __init__(self, **kw):
         super().__init__(**kw)
@@ -605,7 +607,8 @@ class AScanApp(App):
                 self.set_combo(items, name)
                 pop.dismiss()
             except Exception as e:
-                self.log_msg('Erro download: %s' % e)
+                self.log_msg('Erro download: %s' % e
+            )
         Clock.schedule_once(work, 0.05)
 
     def start_scan(self, *_):
@@ -628,7 +631,7 @@ class AScanApp(App):
         _pause.clear()
         _stop.clear()
         self.stats = {'hits': 0, 'checks': 0, 'start': time.time()}
-        self.lbl_status.text = '[color=F59E0B]\u25cf[/color] Rodando'
+        self.lbl_status.text = '[color=F59E0B]*[/color] Rodando'
         self.btn_go.disabled = True
         self.log_msg('Start %d srv | %d combo | %d thr' % (len(servers), len(self.combo_items), th))
         self.scan_thread = threading.Thread(
@@ -684,7 +687,7 @@ class AScanApp(App):
     def _done(self):
         self.scan_running = False
         self.btn_go.disabled = False
-        self.lbl_status.text = '[color=22C55E]\u25cf[/color] Pronto'
+        self.lbl_status.text = '[color=22C55E]*[/color] Pronto'
         self.log_msg('Fim | Hits %d | Checks %d' % (self.stats['hits'], self.stats['checks']))
         if self.clock:
             self.clock.cancel()
@@ -706,13 +709,13 @@ class AScanApp(App):
             _pause.clear()
             self.scan_paused = False
             self.btn_pause.text = 'PAUSAR'
-            self.lbl_status.text = '[color=F59E0B]\u25cf[/color] Rodando'
+            self.lbl_status.text = '[color=F59E0B]*[/color] Rodando'
             self.log_msg('Retomado')
         else:
             _pause.set()
             self.scan_paused = True
             self.btn_pause.text = 'RETOMAR'
-            self.lbl_status.text = '[color=E3B341]\u25cf[/color] Pausado'
+            self.lbl_status.text = '[color=E3B341]*[/color] Pausado'
             self.log_msg('Pausado')
 
     def stop_scan(self, *_):
@@ -724,7 +727,7 @@ class AScanApp(App):
         self.scan_paused = False
         self.btn_go.disabled = False
         self.btn_pause.text = 'PAUSAR'
-        self.lbl_status.text = '[color=22C55E]\u25cf[/color] Pronto'
+        self.lbl_status.text = '[color=22C55E]*[/color] Pronto'
         self.log_msg('Parado')
         if self.clock:
             self.clock.cancel()
