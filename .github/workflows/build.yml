@@ -7,6 +7,10 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+  actions: read
+
 jobs:
   build-android:
     runs-on: ubuntu-latest
@@ -54,7 +58,6 @@ jobs:
         pip install "legacy-cgi" "cython>=0.29.33,<3.0" virtualenv
         pip install git+https://github.com/kivy/buildozer.git
 
-    # Do NOT restore a previous broken build cache for the platform build dir
     - name: Cache only global packages / gradle
       uses: actions/cache@v4
       with:
@@ -67,7 +70,6 @@ jobs:
 
     - name: Full clean of local build tree
       run: |
-        # Always wipe local platform build to avoid stale mixed pip/venv
         rm -rf .buildozer
         rm -rf bin
         buildozer android clean || true
@@ -85,6 +87,7 @@ jobs:
 
     - name: Upload APK to Release
       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      continue-on-error: true
       uses: softprops/action-gh-release@v2
       with:
         tag_name: v2.0.0-${{ github.run_number }}
