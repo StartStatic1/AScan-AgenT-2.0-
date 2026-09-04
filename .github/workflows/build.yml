@@ -1,0 +1,93 @@
+name: Build AScan AgenT 2.0 APK
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          git \
+          zip \
+          unzip \
+          openjdk-17-jdk \
+          python3-pip \
+          autoconf \
+          libtool \
+          pkg-config \
+          zlib1g-dev \
+          libncurses5-dev \
+          libncursesw5-dev \
+          libtinfo5 \
+          cmake \
+          libffi-dev \
+          libssl-dev \
+          automake
+
+    - name: Install Buildozer
+      run: |
+        pip install --upgrade pip
+        pip install buildozer cython virtualenv
+
+    - name: Cache Buildozer global
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.buildozer
+          ~/.gradle
+        key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
+        restore-keys: |
+          ${{ runner.os }}-buildozer-
+
+    - name: Build APK
+      run: |
+        buildozer -v android debug
+
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: AScan-AgenT-2.0-APK
+        path: bin/*.apk
+
+    - name: Upload APK to Release
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v2.0.0-${{ github.run_number }}
+        name: AScan AgenT 2.0 Build ${{ github.run_number }}
+        files: bin/*.apk
+        body: |
+          ## AScan AgenT 2.0
+
+          Build automatico do APK Android.
+
+          ### Funcionalidades:
+          - Interface grafica nativa
+          - Escaneamento multi-servidor (ate 5)
+          - Suporte a combo via arquivo
+          - 5 modos de ataque (Padrao, Adaptativo, Furtivo, Camaleao, Bypass)
+          - Controle de threads
+          - Logs em tempo real
+          - Salvamento automatico de hits
+
+          ### Grupo: AScan
+          ### Telegram: https://t.me/+UfgoBcTQpwBlMDMx
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
