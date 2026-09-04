@@ -408,7 +408,7 @@ def fetch_counts(server, user, pwd):
 
 # ========== SALVAR HIT ==========
 def remover_ansi(texto):
-    ansi_escape = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')
+    ansi_escape = re.compile(r'\x1B\\[[0-?]*[ -/]*[@-~]')
     return ansi_escape.sub('', texto)
 
 def build_hit_text(server, item, data):
@@ -535,6 +535,8 @@ class Card(BoxLayout):
         self.padding = [12, 12, 12, 12]
         self.spacing = 8
         self.size_hint_y = None
+        # CRITICAL: without this, cards collapse and UI overlaps on Android
+        self.bind(minimum_height=self.setter('height'))
         with self.canvas.before:
             Color(*get_color_from_hex(THEME['card']))
             self.rect = RoundedRectangle(pos=self.pos, size=self.size, radius=[12])
@@ -550,24 +552,16 @@ class StyledButton(Button):
         self.btn_type = btn_type
         self.background_normal = ''
         self.background_down = ''
-        self.background_color = get_color_from_hex(THEME['accent'] if btn_type == 'primary' else 
-                                                     THEME['success'] if btn_type == 'success' else
-                                                     THEME['danger'] if btn_type == 'danger' else
-                                                     THEME['warning'] if btn_type == 'warning' else
-                                                     THEME['border'])
-        self.color = get_color_from_hex(THEME['text'])
-        self.font_size = '14sp'
+        colors = {
+            'primary': THEME['accent'],
+            'success': THEME['success'],
+            'warning': THEME['warning'],
+            'danger': THEME['danger'],
+        }
+        self.background_color = get_color_from_hex(colors.get(btn_type, THEME['accent']))
+        self.color = (1, 1, 1, 1)
         self.bold = True
-        self.size_hint_y = None
-        self.height = 48
-        with self.canvas.before:
-            Color(*self.background_color)
-            self.rect = RoundedRectangle(pos=self.pos, size=self.size, radius=[8])
-        self.bind(pos=self.update_rect, size=self.update_rect)
-
-    def update_rect(self, *args):
-        self.rect.pos = self.pos
-        self.rect.size = self.size
+        self.font_size = '13sp'
 
 class StyledInput(TextInput):
     def __init__(self, **kwargs):
@@ -587,10 +581,17 @@ class LogLabel(Label):
         super().__init__(**kwargs)
         self.color = get_color_from_hex(THEME['text'])
         self.font_size = '12sp'
-        self.text_size = (None, None)
         self.halign = 'left'
         self.valign = 'top'
         self.markup = True
+        self.size_hint_y = None
+        self.bind(texture_size=self._update_height, width=self._update_text_size)
+
+    def _update_text_size(self, *args):
+        self.text_size = (self.width, None)
+
+    def _update_height(self, *args):
+        self.height = max(self.texture_size[1], 40)
 
 # ========== APP PRINCIPAL ==========
 class AScanApp(App):
@@ -614,24 +615,28 @@ class AScanApp(App):
         self.scan_thread = None
         self.update_clock = None
         Window.clearcolor = get_color_from_hex(THEME['bg'])
+        try:
+            Window.softinput_mode = 'below_target'
+        except Exception:
+            pass
 
     def build(self):
         return self.build_main_screen()
 
     def build_main_screen(self):
-        root = BoxLayout(orientation='vertical', padding=16, spacing=12)
+        root = BoxLayout(orientation='vertical', padding=[10, 8, 10, 8], spacing=8)
 
         # Header
-        header = BoxLayout(size_hint_y=None, height=60, spacing=10)
+        header = BoxLayout(size_hint_y=None, height=48, spacing=8)
         title = Label(
             text='[b]AScan AgenT 2.0[/b]',
             markup=True,
-            font_size='24sp',
+            font_size='22sp',
             color=get_color_from_hex(THEME['accent']),
             size_hint_x=0.7
         )
         status = Label(
-            text='[color=238636]●[/color] Pronto',
+            text='[color=238636]\u25cf[/color] Pronto',
             markup=True,
             font_size='12sp',
             color=get_color_from_hex(THEME['text_dim']),
@@ -643,8 +648,8 @@ class AScanApp(App):
         root.add_widget(header)
 
         # Scroll content
-        scroll = ScrollView()
-        content = GridLayout(cols=1, spacing=12, size_hint_y=None)
+        scroll = ScrollView(do_scroll_x=False)
+        content = GridLayout(cols=1, spacing=10, size_hint_y=None, padding=[0, 0, 0, 8])
         content.bind(minimum_height=content.setter('height'))
 
         # Card Servidores
@@ -655,7 +660,7 @@ class AScanApp(App):
             color=get_color_from_hex(THEME['accent']),
             font_size='14sp',
             size_hint_y=None,
-            height=30
+            height=28
         ))
         self.server_inputs = []
         for i in range(5):
@@ -672,19 +677,21 @@ class AScanApp(App):
             color=get_color_from_hex(THEME['accent']),
             font_size='14sp',
             size_hint_y=None,
-            height=30
+            height=28
         ))
-        combo_row = BoxLayout(size_hint_y=None, height=50, spacing=8)
+        combo_row = BoxLayout(size_hint_y=None, height=48, spacing=8)
         self.combo_label = Label(
             text='Nenhum combo selecionado',
             color=get_color_from_hex(THEME['text_dim']),
             font_size='12sp',
-            size_hint_x=0.6
+            size_hint_x=0.55,
+            halign='left',
+            text_size=(None, None)
         )
         btn_combo = StyledButton(
-            text='Escolher Combo',
+            text='Escolher',
             btn_type='primary',
-            size_hint_x=0.4
+            size_hint_x=0.45
         )
         btn_combo.bind(on_press=self.show_file_chooser)
         combo_row.add_widget(self.combo_label)
@@ -700,15 +707,15 @@ class AScanApp(App):
             color=get_color_from_hex(THEME['accent']),
             font_size='14sp',
             size_hint_y=None,
-            height=30
+            height=28
         ))
 
-        # Modo
-        modo_row = BoxLayout(size_hint_y=None, height=50, spacing=8)
+        modo_row = BoxLayout(size_hint_y=None, height=48, spacing=8)
         modo_row.add_widget(Label(
             text='Modo:',
             color=get_color_from_hex(THEME['text']),
-            size_hint_x=0.3
+            size_hint_x=0.3,
+            font_size='13sp'
         ))
         self.modo_spinner = Spinner(
             text='Adaptativo',
@@ -720,12 +727,12 @@ class AScanApp(App):
         modo_row.add_widget(self.modo_spinner)
         card_config.add_widget(modo_row)
 
-        # Threads
-        threads_row = BoxLayout(size_hint_y=None, height=50, spacing=8)
+        threads_row = BoxLayout(size_hint_y=None, height=48, spacing=8)
         threads_row.add_widget(Label(
             text='Threads:',
             color=get_color_from_hex(THEME['text']),
-            size_hint_x=0.3
+            size_hint_x=0.3,
+            font_size='13sp'
         ))
         self.threads_input = StyledInput(
             text='20',
@@ -734,14 +741,14 @@ class AScanApp(App):
         threads_row.add_widget(self.threads_input)
         card_config.add_widget(threads_row)
 
-        # Proxy
-        proxy_row = BoxLayout(size_hint_y=None, height=50, spacing=8)
+        proxy_row = BoxLayout(size_hint_y=None, height=48, spacing=8)
         self.proxy_toggle = ToggleButton(
             text='Sem Proxy',
             group='proxy',
             state='down',
             background_color=get_color_from_hex(THEME['border']),
-            color=get_color_from_hex(THEME['text'])
+            color=get_color_from_hex(THEME['text']),
+            font_size='13sp'
         )
         proxy_row.add_widget(self.proxy_toggle)
         card_config.add_widget(proxy_row)
@@ -755,7 +762,7 @@ class AScanApp(App):
             color=get_color_from_hex(THEME['accent']),
             font_size='14sp',
             size_hint_y=None,
-            height=30
+            height=28
         ))
         self.stats_labels = {}
         for key, label_text in [
@@ -770,7 +777,8 @@ class AScanApp(App):
                 color=get_color_from_hex(THEME['text']),
                 font_size='13sp',
                 size_hint_y=None,
-                height=28
+                height=26,
+                halign='left'
             )
             self.stats_labels[key] = lbl
             card_stats.add_widget(lbl)
@@ -784,13 +792,9 @@ class AScanApp(App):
             color=get_color_from_hex(THEME['accent']),
             font_size='14sp',
             size_hint_y=None,
-            height=30
+            height=28
         ))
-        self.log_label = LogLabel(
-            text='Aguardando inicio...',
-            size_hint_y=None
-        )
-        self.log_label.bind(texture_size=self.log_label.setter('size'))
+        self.log_label = LogLabel(text='Aguardando inicio...')
         card_log.add_widget(self.log_label)
         content.add_widget(card_log)
 
@@ -798,23 +802,14 @@ class AScanApp(App):
         root.add_widget(scroll)
 
         # Botoes de controle
-        controls = BoxLayout(size_hint_y=None, height=60, spacing=10)
-        self.btn_start = StyledButton(
-            text='INICIAR SCAN',
-            btn_type='success'
-        )
+        controls = BoxLayout(size_hint_y=None, height=52, spacing=8)
+        self.btn_start = StyledButton(text='INICIAR SCAN', btn_type='success')
         self.btn_start.bind(on_press=self.start_scan)
 
-        self.btn_pause = StyledButton(
-            text='PAUSAR',
-            btn_type='warning'
-        )
+        self.btn_pause = StyledButton(text='PAUSAR', btn_type='warning')
         self.btn_pause.bind(on_press=self.toggle_pause)
 
-        self.btn_stop = StyledButton(
-            text='PARAR',
-            btn_type='danger'
-        )
+        self.btn_stop = StyledButton(text='PARAR', btn_type='danger')
         self.btn_stop.bind(on_press=self.stop_scan)
 
         controls.add_widget(self.btn_start)
@@ -846,7 +841,7 @@ class AScanApp(App):
             size_hint=(0.9, 0.8)
         )
 
-        def on_select(instance):
+        def on_select(btn):
             if filechooser.selection:
                 path = filechooser.selection[0]
                 self.load_combo(path)
@@ -857,227 +852,168 @@ class AScanApp(App):
         popup.open()
 
     def load_combo(self, path):
-        global COMBO_ATUAL_NOME
-        items = []
         try:
+            items = []
             with open(path, 'r', encoding='utf-8', errors='ignore') as f:
                 for line in f:
                     line = line.strip()
-                    if line and ':' in line:
-                        u, p = line.split(':', 1)
-                        u = u.strip()
-                        p = p.strip()
-                        if u and p:
-                            items.append((u, p))
+                    if not line or line.startswith('#'):
+                        continue
+                    if ':' in line:
+                        parts = line.split(':', 1)
+                        if len(parts) == 2 and parts[0] and parts[1]:
+                            items.append((parts[0].strip(), parts[1].strip()))
+            self.combo_items = items
+            name = os.path.basename(path)
+            global COMBO_ATUAL_NOME
+            COMBO_ATUAL_NOME = name
+            self.combo_label.text = f'{name} ({len(items)} linhas)'
+            self.combo_loaded = name
+            self.add_log(f'Combo carregado: {name} - {len(items)} contas')
         except Exception as e:
-            self.add_log(f"Erro ao carregar combo: {e}")
-            return
+            self.add_log(f'Erro ao carregar combo: {e}')
 
-        self.combo_items = items
-        COMBO_ATUAL_NOME = os.path.basename(path)
-        self.combo_label.text = f"{COMBO_ATUAL_NOME} ({len(items)} itens)"
-        self.add_log(f"Combo carregado: {COMBO_ATUAL_NOME} ({len(items)} itens)")
-
-    def add_log(self, text):
+    def add_log(self, msg):
+        ts = datetime.datetime.now().strftime('%H:%M:%S')
+        line = f'[{ts}] {msg}'
         current = self.log_label.text
-        lines = current.split('\n')
-        lines.append(text)
-        if len(lines) > 50:
-            lines = lines[-50:]
-        self.log_label.text = '\n'.join(lines)
+        if current == 'Aguardando inicio...':
+            self.log_label.text = line
+        else:
+            lines = (current + '\n' + line).split('\n')
+            self.log_label.text = '\n'.join(lines[-40:])
 
     def start_scan(self, instance):
         if self.scan_running:
             return
-
-        # Coleta servidores
-        self.servers = []
+        servers = []
         for inp in self.server_inputs:
-            s = inp.text.strip()
-            if s:
-                s = s.replace('http://', '').replace('https://', '').strip()
-                if ':' not in s:
-                    s += ':80'
-                self.servers.append(s)
-
-        if not self.servers:
-            self.add_log("Erro: Nenhum servidor informado!")
+            val = inp.text.strip()
+            if val:
+                servers.append(val)
+        if not servers:
+            self.add_log('Informe ao menos 1 servidor')
             return
-
         if not self.combo_items:
-            self.add_log("Erro: Nenhum combo carregado!")
+            self.add_log('Carregue um combo primeiro')
             return
-
-        # Configura modo
-        modo_map = {
-            'Padrao': 'padrao',
-            'Adaptativo': 'adaptativo',
-            'Furtivo': 'furtivo',
-            'Camaleao': 'camaleao',
-            'Bypass Intenso': 'bypass_intenso'
-        }
-        global MODO_ATAQUE
-        MODO_ATAQUE = modo_map.get(self.modo_spinner.text, 'adaptativo')
 
         try:
-            n_threads = int(self.threads_input.text or "20")
-            n_threads = max(1, min(n_threads, 50))
+            threads = int(self.threads_input.text.strip() or '20')
         except:
-            n_threads = 20
+            threads = 20
+        threads = max(1, min(threads, 100))
 
-        self.add_log(f"Iniciando scan em {len(self.servers)} servidor(es)...")
-        self.add_log(f"Modo: {MODO_ATAQUE} | Threads: {n_threads}")
-
-        global _stop_early, _pause_scan
-        _stop_early.clear()
-        _pause_scan.clear()
-
+        self.servers = servers
         self.scan_running = True
         self.scan_paused = False
-        self.status_label.text = '[color=238636]●[/color] Escaneando'
-
+        _pause_scan.clear()
+        _stop_early.clear()
         self.stats = {'hits': 0, 'checks': 0, 'cpm': 0.0, 'start': time.time()}
-        self.server_hits = {s: 0 for s in self.servers}
-        global _start_time, STATS_GERAIS
-        _start_time = time.time()
-        STATS_GERAIS = {"hits": 0, "hits_ilimitados": 0, "checks": 0, "start_time": _start_time}
+        self.status_label.text = '[color=F0883E]\u25cf[/color] Rodando'
+        self.btn_start.disabled = True
+        self.add_log(f'Iniciando scan em {len(servers)} servidor(es) | {len(self.combo_items)} combos | {threads} threads')
 
-        # Filas
-        self.task_queues = {}
-        for s in self.servers:
-            q = queue.Queue()
-            for item in self.combo_items:
-                q.put(item)
-            self.task_queues[s] = q
+        self.scan_thread = threading.Thread(
+            target=self._scan_worker,
+            args=(servers, list(self.combo_items), threads),
+            daemon=True
+        )
+        self.scan_thread.start()
+        self.update_clock = Clock.schedule_interval(self._update_stats_ui, 1.0)
 
-        # Workers
-        self.workers = []
-        for s in self.servers:
-            for _ in range(n_threads):
-                t = threading.Thread(
-                    target=self.worker,
-                    args=(s, self.task_queues[s]),
-                    daemon=True
-                )
-                t.start()
-                self.workers.append(t)
+    def _scan_worker(self, servers, items, threads):
+        q = queue.Queue()
+        for item in items:
+            q.put(item)
 
-        # Atualizacao de UI
-        self.update_clock = Clock.schedule_interval(self.update_ui, 1.0)
-
-    def worker(self, server, task_q):
-        proxy = None
-        consecutive_fails = 0
-        stealth_burst_counter = 0
-
-        while not _stop_early.is_set():
-            if _pause_scan.is_set():
-                time.sleep(0.2)
-                continue
-
-            try:
-                item = task_q.get(timeout=0.5)
-            except queue.Empty:
-                break
-
-            user, pwd = item
-
-            try:
-                if MODO_ATAQUE == 'furtivo':
-                    stealth_burst_counter += 1
-                    if stealth_burst_counter > random.randint(3, 8):
-                        time.sleep(random.uniform(1, 4))
-                        stealth_burst_counter = 0
-
-                if MODO_ATAQUE == 'camaleao':
-                    renew_session_hibrida(server, proxy)
-
-                ok, data = check_target(server, item, proxy=proxy)
-
-                with _display_lock:
-                    self.stats['checks'] += 1
-                    elapsed = time.time() - self.stats['start']
-                    self.stats['cpm'] = self.stats['checks'] / elapsed * 60 if elapsed > 0 else 0
-
-                if ok:
-                    consecutive_fails = 0
-                    self.server_hits[server] = self.server_hits.get(server, 0) + 1
-                    self.stats['hits'] += 1
-
-                    save_combo_for_server(server, user, pwd)
-                    texto, is_ilimitado = build_hit_text(server, item, data)
-                    save_hit(server, texto, is_ilimitado)
-
+        def worker(server):
+            while not _stop_early.is_set():
+                if _pause_scan.is_set():
+                    time.sleep(0.3)
+                    continue
+                try:
+                    item = q.get_nowait()
+                except queue.Empty:
+                    break
+                try:
+                    ok, data = check_target(server, item, timeout=8)
                     with _RESULTS_LOCK:
-                        host = server.split(':')[0]
-                        HIT_CASCADE.append(f"http://{host[:20]} | {user[:8]} - {pwd[:8]}")
+                        self.stats['checks'] += 1
+                    if ok:
+                        texto, is_ilim = build_hit_text(server, item, data)
+                        save_hit(server, texto, is_ilim)
+                        save_combo_for_server(server, item[0], item[1])
+                        with _RESULTS_LOCK:
+                            self.stats['hits'] += 1
+                        Clock.schedule_once(lambda dt, s=server, u=item[0]: self.add_log(f'HIT {s} | {u}'), 0)
+                except Exception:
+                    pass
+                finally:
+                    try:
+                        q.task_done()
+                    except Exception:
+                        pass
 
-                    Clock.schedule_once(lambda dt, t=texto: self.add_log(f"[HIT] {t[:100]}..."), 0)
+        pool = []
+        per_server = max(1, threads // max(len(servers), 1))
+        for server in servers:
+            for _ in range(per_server):
+                t = threading.Thread(target=worker, args=(server,), daemon=True)
+                t.start()
+                pool.append(t)
 
-                    if server not in BASELINE_CATS or not BASELINE_CATS[server]:
-                        cats = get_categories(server, user, pwd, timeout=8)
-                        BASELINE_CATS[server] = _cats_to_set(cats)
-                else:
-                    consecutive_fails += 1
-                    if consecutive_fails >= 5 and MODO_ATAQUE == 'adaptativo':
-                        renew_session_hibrida(server, proxy)
-                        consecutive_fails = 0
+        for t in pool:
+            t.join()
 
-            except:
-                pass
-            finally:
-                task_q.task_done()
+        Clock.schedule_once(lambda dt: self._on_scan_finished(), 0)
 
-    def update_ui(self, dt):
-        if not self.scan_running:
-            return
+    def _on_scan_finished(self):
+        self.scan_running = False
+        self.btn_start.disabled = False
+        self.status_label.text = '[color=238636]\u25cf[/color] Pronto'
+        self.add_log(f'Scan finalizado | Hits: {self.stats["hits"]} | Checks: {self.stats["checks"]}')
+        if self.update_clock:
+            self.update_clock.cancel()
 
-        elapsed = int(time.time() - self.stats['start'])
-        tempo_str = f"{elapsed//60:02}:{elapsed%60:02}"
-
-        self.stats_labels['checks'].text = f"Checks: {self.stats['checks']:,}"
-        self.stats_labels['hits'].text = f"Hits: {self.stats['hits']}"
-        self.stats_labels['ilimitados'].text = f"Ilimitados: {STATS_GERAIS['hits_ilimitados']}"
-        self.stats_labels['cpm'].text = f"CPM: {int(self.stats['cpm'])}"
-        self.stats_labels['tempo'].text = f"Tempo: {tempo_str}"
-
-        # Verifica se terminou
-        alive = any(t.is_alive() for t in self.workers)
-        if not alive or _stop_early.is_set():
-            self.scan_running = False
-            self.status_label.text = '[color=F0883E]●[/color] Finalizado'
-            self.add_log(f"Scan finalizado! Hits: {self.stats['hits']}")
-            if self.update_clock:
-                self.update_clock.cancel()
+    def _update_stats_ui(self, dt):
+        elapsed = max(time.time() - self.stats['start'], 1)
+        cpm = (self.stats['checks'] / elapsed) * 60
+        mins = int(elapsed // 60)
+        secs = int(elapsed % 60)
+        self.stats_labels['checks'].text = f'Checks: {self.stats["checks"]}'
+        self.stats_labels['hits'].text = f'Hits: {self.stats["hits"]}'
+        self.stats_labels['ilimitados'].text = f'Ilimitados: {STATS_GERAIS.get("hits_ilimitados", 0)}'
+        self.stats_labels['cpm'].text = f'CPM: {cpm:.0f}'
+        self.stats_labels['tempo'].text = f'Tempo: {mins:02d}:{secs:02d}'
 
     def toggle_pause(self, instance):
         if not self.scan_running:
             return
-
         if self.scan_paused:
             _pause_scan.clear()
             self.scan_paused = False
             self.btn_pause.text = 'PAUSAR'
-            self.status_label.text = '[color=238636]●[/color] Escaneando'
-            self.add_log("Scan continuado")
+            self.status_label.text = '[color=F0883E]\u25cf[/color] Rodando'
+            self.add_log('Scan retomado')
         else:
             _pause_scan.set()
             self.scan_paused = True
-            self.btn_pause.text = 'CONTINUAR'
-            self.status_label.text = '[color=F0883E]●[/color] Pausado'
-            self.add_log("Scan pausado")
+            self.btn_pause.text = 'RETOMAR'
+            self.status_label.text = '[color=E3B341]\u25cf[/color] Pausado'
+            self.add_log('Scan pausado')
 
     def stop_scan(self, instance):
         if not self.scan_running:
             return
-
         _stop_early.set()
+        _pause_scan.clear()
         self.scan_running = False
         self.scan_paused = False
-        self.status_label.text = '[color=DA3633]●[/color] Parado'
+        self.btn_start.disabled = False
         self.btn_pause.text = 'PAUSAR'
-        self.add_log("Scan parado pelo usuario")
-
+        self.status_label.text = '[color=238636]\u25cf[/color] Pronto'
+        self.add_log('Scan parado pelo usuario')
         if self.update_clock:
             self.update_clock.cancel()
 
