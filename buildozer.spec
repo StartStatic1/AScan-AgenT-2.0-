@@ -18,8 +18,9 @@ source.include_exts = py,png,jpg,kv,atlas,ttf,txt
 version = 2.0.0
 
 # Requirements
-# cloudscraper and its pure-python deps; js2py/pyOpenSSL etc. will be pulled as needed
-requirements = python3,kivy==2.2.1,requests,urllib3,charset-normalizer,idna,certifi,cloudscraper,dnspython
+# Pin python3/hostpython3 to 3.11 (cgi still present; avoids 3.13+/3.14 isolated build env issues)
+# Kivy 2.3.0 works better with current p4a + Cython
+requirements = python3==3.11.9,hostpython3==3.11.9,kivy==2.3.0,requests,urllib3,charset-normalizer,idna,certifi,cloudscraper,dnspython
 
 # Orientation
 orientation = portrait
@@ -40,12 +41,8 @@ android.archs = arm64-v8a,armeabi-v7a
 # Enable AndroidX
 android.enable_androidx = True
 
-# Use a known-good p4a branch
+# Use stable p4a branch
 p4a.branch = master
-
-# Icon / presplash (uncomment when you add the files)
-# android.icon = icon.png
-# android.presplash_color = #0D1117
 
 [buildozer]
 log_level = 2
