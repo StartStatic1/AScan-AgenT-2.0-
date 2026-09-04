@@ -51,24 +51,26 @@ jobs:
     - name: Install Buildozer and build tools
       run: |
         pip install --upgrade pip setuptools wheel
-        # cgi was removed in Python 3.13+; needed by older Cython Tempita
         pip install "legacy-cgi" "cython>=0.29.33,<3.0" virtualenv
         pip install git+https://github.com/kivy/buildozer.git
 
-    - name: Cache Buildozer global
+    # Do NOT restore a previous broken build cache for the platform build dir
+    - name: Cache only global packages / gradle
       uses: actions/cache@v4
       with:
         path: |
-          ~/.buildozer
+          ~/.buildozer/android/packages
           ~/.gradle
-        key: ${{ runner.os }}-buildozer-v3-${{ hashFiles('buildozer.spec') }}
+        key: ${{ runner.os }}-p4a-packages-v4-${{ hashFiles('buildozer.spec') }}
         restore-keys: |
-          ${{ runner.os }}-buildozer-v3-
+          ${{ runner.os }}-p4a-packages-v4-
 
-    - name: Clean previous build (if any)
+    - name: Full clean of local build tree
       run: |
+        # Always wipe local platform build to avoid stale mixed pip/venv
+        rm -rf .buildozer
+        rm -rf bin
         buildozer android clean || true
-        rm -rf .buildozer/android/platform/build-*
 
     - name: Build APK
       run: |

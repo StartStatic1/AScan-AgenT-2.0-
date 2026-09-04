@@ -18,8 +18,8 @@ source.include_exts = py,png,jpg,kv,atlas,ttf,txt
 version = 2.0.0
 
 # Requirements
-# Pin python3/hostpython3 to 3.11 (cgi still present; avoids 3.13+/3.14 isolated build env issues)
-# Kivy 2.3.0 works better with current p4a + Cython
+# Pin python to 3.11 (stable with current p4a)
+# Kivy 2.3.0; pure-python deps for networking
 requirements = python3==3.11.9,hostpython3==3.11.9,kivy==2.3.0,requests,urllib3,charset-normalizer,idna,certifi,cloudscraper,dnspython
 
 # Orientation
@@ -35,13 +35,13 @@ android.accept_sdk_license = True
 # Permissions
 android.permissions = INTERNET,ACCESS_NETWORK_STATE,WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE,VIBRATE
 
-# Architecture
-android.archs = arm64-v8a,armeabi-v7a
+# Build only arm64 (faster + avoids dual-arch issues). Most phones are arm64 now.
+android.archs = arm64-v8a
 
 # Enable AndroidX
 android.enable_androidx = True
 
-# Use stable p4a branch
+# Stable p4a
 p4a.branch = master
 
 [buildozer]
