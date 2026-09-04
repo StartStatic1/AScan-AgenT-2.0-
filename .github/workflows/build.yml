@@ -35,7 +35,7 @@ jobs:
           zlib1g-dev \
           libncurses5-dev \
           libncursesw5-dev \
-          libtinfo5 \
+          libtinfo6 \
           cmake \
           libffi-dev \
           libssl-dev \
@@ -82,7 +82,7 @@ jobs:
           - Interface grafica nativa
           - Escaneamento multi-servidor (ate 5)
           - Suporte a combo via arquivo
-          - 5 modos de ataque (Padrao, Adaptativo, Furtivo, Camaleao, Bypass)
+          - 5 modos de ataque
           - Controle de threads
           - Logs em tempo real
           - Salvamento automatico de hits
