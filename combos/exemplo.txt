@@ -1,0 +1,4 @@
+# Exemplo de combo - substitua pelas suas linhas
+# formato: usuario:senha (uma por linha)
+#user1:pass1
+#user2:pass2
