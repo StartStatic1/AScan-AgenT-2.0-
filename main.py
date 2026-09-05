@@ -534,7 +534,7 @@ class AScanApp(App):
     def build(self):
         root = BoxLayout(orientation='vertical', padding=[dp(12), dp(10), dp(12), dp(10)], spacing=dp(8))
         head = BoxLayout(size_hint_y=None, height=dp(40))
-        title = Label(text='[b]AScan[/b] AgenT 2.0', markup=True, font_size='20sp',
+        title = Label(text='[b]AScan[/b] Agent', markup=True, font_size='20sp',
                       color=hex_c('blue'), halign='left', valign='middle', size_hint_x=0.7)
         title.bind(size=lambda i, v: setattr(i, 'text_size', v))
         self.lbl_status = Label(text=self.status_txt, markup=True, font_size='12sp',
@@ -549,23 +549,23 @@ class AScanApp(App):
         body.bind(minimum_height=body.setter('height'))
 
         card = RCard()
-        card.add_widget(T('SERVIDORES', size=12, muted=True, bold=True))
+        card.add_widget(T('ALVOS', size=12, muted=True, bold=True))
         self.srv = []
         for i in range(5):
-            e = Inp(hint_text='host:porta  (sem http://)')
+            e = Inp(hint_text='alvo host:porta')
             self.srv.append(e)
             card.add_widget(e)
         body.add_widget(card)
 
         card = RCard()
-        card.add_widget(T('COMBO', size=12, muted=True, bold=True))
+        card.add_widget(T('COMBO / LISTA', size=12, muted=True, bold=True))
         self.lbl_combo = T('Nenhum combo carregado', size=13, muted=True)
         self.lbl_combo.height = dp(28)
         card.add_widget(self.lbl_combo)
         row = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(8))
-        b1 = Btn('GitHub', kind='blue')
+        b1 = Btn('Nuvem', kind='blue')
         b1.bind(on_press=self.open_github_combos)
-        b2 = Btn('Colar texto', kind='dark')
+        b2 = Btn('Colar', kind='dark')
         b2.bind(on_press=self.open_paste_combo)
         row.add_widget(b1)
         row.add_widget(b2)
@@ -573,7 +573,7 @@ class AScanApp(App):
         body.add_widget(card)
 
         card = RCard()
-        card.add_widget(T('PROXIES', size=12, muted=True, bold=True))
+        card.add_widget(T('PROXY', size=12, muted=True, bold=True))
         self.lbl_proxy = T('Sem proxy (direto)', size=13, muted=True)
         self.lbl_proxy.height = dp(26)
         card.add_widget(self.lbl_proxy)
@@ -591,12 +591,12 @@ class AScanApp(App):
         body.add_widget(card)
 
         card = RCard()
-        card.add_widget(T('CONFIG', size=12, muted=True, bold=True))
+        card.add_widget(T('ATAQUE', size=12, muted=True, bold=True))
         r1 = BoxLayout(size_hint_y=None, height=dp(46), spacing=dp(8))
-        r1.add_widget(T('Modo', size=13, size_hint_x=0.28))
+        r1.add_widget(T('Modo ATK', size=13, size_hint_x=0.28))
         self.modo = Spinner(
             text='Adaptativo',
-            values=['Padrao', 'Adaptativo', 'Furtivo', 'Camaleao', 'Bypass Intenso'],
+            values=['Padrao', 'Adaptativo', 'Furtivo', 'Camaleao', 'Bypass'],
             size_hint_x=0.72, background_normal='', background_color=hex_c('input'),
             color=hex_c('text'), font_size='14sp',
         )
@@ -610,7 +610,7 @@ class AScanApp(App):
         body.add_widget(card)
 
         card = RCard()
-        card.add_widget(T('PAINEL', size=12, muted=True, bold=True))
+        card.add_widget(T('LIVE', size=12, muted=True, bold=True))
         grid = GridLayout(cols=2, spacing=dp(6), size_hint_y=None, height=dp(110))
         self.sl = {}
         for k, v in [
@@ -636,7 +636,7 @@ class AScanApp(App):
         body.add_widget(card)
 
         card = RCard()
-        card.add_widget(T('HITS (ultimos)', size=12, muted=True, bold=True))
+        card.add_widget(T('HITS', size=12, muted=True, bold=True))
         self.log = LogBox(text='-')
         card.add_widget(self.log)
         body.add_widget(card)
@@ -714,7 +714,7 @@ class AScanApp(App):
         box.add_widget(ti)
         btn = Btn('Carregar', kind='green')
         box.add_widget(btn)
-        pop = Popup(title='Proxies', content=box, size_hint=(0.94, 0.7))
+        pop = Popup(title='Colar proxy', content=box, size_hint=(0.94, 0.7))
         def ok(_):
             items = parse_proxy_text(ti.text)
             if items:
@@ -731,7 +731,7 @@ class AScanApp(App):
         box.add_widget(ti)
         btn = Btn('Carregar', kind='green')
         box.add_widget(btn)
-        pop = Popup(title='Combo', content=box, size_hint=(0.94, 0.7))
+        pop = Popup(title='Colar combo', content=box, size_hint=(0.94, 0.7))
         def ok(_):
             items = parse_combo_text(ti.text)
             if items:
@@ -749,7 +749,7 @@ class AScanApp(App):
         lst.bind(minimum_height=lst.setter('height'))
         scroll.add_widget(lst)
         box.add_widget(scroll)
-        pop = Popup(title='Combos GitHub', content=box, size_hint=(0.94, 0.85))
+        pop = Popup(title='Combos Nuvem', content=box, size_hint=(0.94, 0.85))
         def work(dt):
             try:
                 r = requests.get(COMBOS_API, timeout=15, headers={'Accept': 'application/vnd.github+json'})
