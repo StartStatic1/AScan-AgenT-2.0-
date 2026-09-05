@@ -49,6 +49,7 @@ REPO_BRANCH = 'main'
 COMBOS_API = 'https://api.github.com/repos/%s/%s/contents/combos' % (REPO_OWNER, REPO_NAME)
 COMBOS_RAW = 'https://raw.githubusercontent.com/%s/%s/%s/combos/' % (REPO_OWNER, REPO_NAME, REPO_BRANCH)
 TELEGRAM = 'https://t.me/+UfgoBcTQpwBlMDMx'
+APP_VERSION = '2.0.1'
 
 try:
     import requests
@@ -668,7 +669,7 @@ class AScanApp(App):
         for k, v in [
             ('checks', 'Checks  0'), ('hits', 'Hits  0'),
             ('ilim', 'Ilimitados  0'), ('cpm', 'CPM  0'),
-            ('tempo', 'Tempo  00:00'), ('ncombo', 'Combo  0'),
+            ('tempo', 'Tempo  00:00'), ('prog', 'Progresso  0%'),
             ('errs', '403:0 429:0 TO:0'), ('px', 'Proxies  0'),
         ]:
             lb = T(v, size=12)
@@ -727,7 +728,6 @@ class AScanApp(App):
         COMBO_NAME = name
         self.lbl_combo.text = '%s  ·  %d contas' % (name, len(items))
         self.lbl_combo.color = hex_c('green')
-        self.sl['ncombo'].text = 'Combo  %d' % len(items)
         self.log_msg('Combo: %s (%d)' % (name, len(items)))
 
     def set_proxies(self, items, label):
@@ -853,10 +853,12 @@ class AScanApp(App):
         ensure_dirs()
         STATS['hits'] = 0
         STATS['hits_ilimitados'] = 0
+        total = max(1, len(self.combo_items) * len(servers))
         self.stats = {
             'hits': 0, 'checks': 0, 'start': time.time(),
             'pause_acc': 0.0, 'pause_at': None,
             'err403': 0, 'err429': 0, 'timeout': 0, 'other': 0, 'ilimitados': 0,
+            'total': total, 'ncombo': len(self.combo_items), 'nsrv': len(servers),
             'per': {s: {'ok': 0, 'hit': 0, 'err': 0, 'last': '-'} for s in servers},
         }
         self.lbl_status.text = '[color=F59E0B]*[/color] Rodando'
@@ -900,7 +902,6 @@ class AScanApp(App):
                     ok, data, meta = check_target(server, item, proxy=px, mode=ATK_MODE)
                     err = meta.get('err', '')
                     code = meta.get('code', 0)
-                    # 404 de senha errada e NORMAL neste painel - nao e offline
                     net_fail = err in (
                         'Timeout', 'ConnectTimeout', 'ReadTimeout',
                         'ConnectionError', 'ProxyError', 'ConnectError',
@@ -911,7 +912,6 @@ class AScanApp(App):
                             SERVER_STREAK[server] = 0
                         elif net_fail:
                             SERVER_STREAK[server] = SERVER_STREAK.get(server, 0) + 1
-                            # quase nunca auto-skip (usuario nao gostou)
                             if SERVER_STREAK[server] >= 999 and server not in SERVER_DEAD:
                                 SERVER_DEAD.add(server)
                                 Clock.schedule_once(
@@ -931,6 +931,7 @@ class AScanApp(App):
                                 self.stats['err403'] += 1
                             elif code == 429 or '429' in str(err):
                                 self.stats['err429'] += 1
+                                time.sleep(0.25 + random.uniform(0, 0.35))
                             elif err in ('Timeout', 'ConnectTimeout', 'ReadTimeout', 'ConnectionError', 'ProxyError'):
                                 self.stats['timeout'] += 1
                     if ok:
@@ -990,6 +991,10 @@ class AScanApp(App):
         self.sl['ilim'].text = 'Ilimitados  %d' % self.stats.get('ilimitados', 0)
         self.sl['cpm'].text = 'CPM  %.0f' % cpm
         self.sl['tempo'].text = 'Tempo  %02d:%02d%s' % (m, s, ' (P)' if self.scan_paused else '')
+        if 'prog' in self.sl:
+            tot = max(1, self.stats.get('total', 1))
+            pct = min(100.0, (self.stats['checks'] / float(tot)) * 100.0)
+            self.sl['prog'].text = 'Progresso  %.1f%%' % pct
         if 'errs' in self.sl:
             self.sl['errs'].text = '403:%d 429:%d TO:%d' % (
                 self.stats.get('err403', 0), self.stats.get('err429', 0), self.stats.get('timeout', 0))
