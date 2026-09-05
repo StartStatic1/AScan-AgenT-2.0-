@@ -343,24 +343,24 @@ def build_hit(server, item, data):
             pass
     m3u = 'http://%s/get.php?username=%s&password=%s&type=m3u_plus&output=ts' % (server, user, pwd)
     plano = 'ILIMITADO' if ilim else 'PREMIUM'
-    emoji = '\u267e\ufe0f' if ilim else '\u2705'
+    emoji = '\u2705' if not ilim else '\u267e\ufe0f'
     txt = (
         '%s AScan AgenT 2.0\n'
-        '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n'
-        '\U0001f310 Server: http://%s\n'
-        '\U0001f4e1 DNS: %s:%s\n'
-        '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n'
-        '\U0001f464 User: %s\n'
-        '\U0001f511 Pass: %s\n'
-        '\U0001f4f6 Status: ONLINE\n'
-        '\U0001f48e Plano: %s\n'
-        '\U0001f465 Conex: %s/%s\n'
-        '\U0001f4c5 Expira: %s\n'
-        '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n'
-        '\U0001f4fa M3U:\n%s\n'
-        '\U0001f4c1 Combo: %s\n'
-        '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n'
-        '\U0001f4ac Telegram: %s\n'
+        '--------------------\n'
+        'Server: http://%s\n'
+        'DNS: %s:%s\n'
+        '--------------------\n'
+        'User: %s\n'
+        'Pass: %s\n'
+        'Status: ONLINE\n'
+        'Plano: %s\n'
+        'Conex: %s/%s\n'
+        'Expira: %s\n'
+        '--------------------\n'
+        'M3U:\n%s\n'
+        'Combo: %s\n'
+        '--------------------\n'
+        'Telegram: %s\n'
     ) % (
         emoji, server, host, port, user, pwd,
         plano,
@@ -610,7 +610,7 @@ class AScanApp(App):
         body.add_widget(card)
 
         card = RCard()
-        card.add_widget(T('STATS', size=12, muted=True, bold=True))
+        card.add_widget(T('PAINEL', size=12, muted=True, bold=True))
         grid = GridLayout(cols=2, spacing=dp(6), size_hint_y=None, height=dp(110))
         self.sl = {}
         for k, v in [
@@ -624,17 +624,19 @@ class AScanApp(App):
             self.sl[k] = lb
             grid.add_widget(lb)
         card.add_widget(grid)
-        self.sl['per'] = T('-', size=11, muted=True)
-        self.sl['per'].height = dp(40)
+        self.sl['per'] = T('-', size=12, muted=False)
+        self.sl['per'].height = dp(110)
         self.sl['per'].markup = True
+        self.sl['per'].valign = 'top'
         card.add_widget(self.sl['per'])
         self.sl['path'] = T('Hits: %s' % (PUBLIC_HITS or HITS_DIR), size=10, muted=True)
         self.sl['path'].height = dp(22)
+        self.sl['path'].markup = True
         card.add_widget(self.sl['path'])
         body.add_widget(card)
 
         card = RCard()
-        card.add_widget(T('STATUS / HITS', size=12, muted=True, bold=True))
+        card.add_widget(T('HITS (ultimos)', size=12, muted=True, bold=True))
         self.log = LogBox(text='-')
         card.add_widget(self.log)
         body.add_widget(card)
@@ -792,10 +794,12 @@ class AScanApp(App):
         _pause.clear()
         _stop.clear()
         ensure_dirs()
+        STATS['hits'] = 0
+        STATS['hits_ilimitados'] = 0
         self.stats = {
             'hits': 0, 'checks': 0, 'start': time.time(),
             'pause_acc': 0.0, 'pause_at': None,
-            'err403': 0, 'err429': 0, 'timeout': 0, 'other': 0,
+            'err403': 0, 'err429': 0, 'timeout': 0, 'other': 0, 'ilimitados': 0,
             'per': {s: {'ok': 0, 'hit': 0, 'err': 0, 'last': '-'} for s in servers},
         }
         self.lbl_status.text = '[color=F59E0B]*[/color] Rodando'
@@ -853,12 +857,14 @@ class AScanApp(App):
                         save_combo_line(server, item[0], item[1])
                         with _lock:
                             self.stats['hits'] += 1
+                            if ilim:
+                                self.stats['ilimitados'] = self.stats.get('ilimitados', 0) + 1
                         tag = 'ILIM' if ilim else 'HIT'
                         Clock.schedule_once(
                             lambda dt, s=server.split(':')[0][:16], u=item[0][:10], tg=tag:
-                                self.log_msg('[color=%s]%s %s[/color] | %s' % (
+                                self.log_msg('[color=%s]%s[/color] %s | %s' % (
                                     'F59E0B' if tg == 'ILIM' else '22C55E',
-                                    '\u267e\ufe0f ILIM' if tg == 'ILIM' else '\u2705 HIT', s, u)), 0)
+                                    'ILIM' if tg == 'ILIM' else 'HIT', s, u)), 0)
                 except Exception:
                     with _lock:
                         self.stats['other'] += 1
@@ -899,33 +905,33 @@ class AScanApp(App):
         m, s = int(el // 60), int(el % 60)
         self.sl['checks'].text = 'Checks  %d' % self.stats['checks']
         self.sl['hits'].text = 'Hits  %d' % self.stats['hits']
-        self.sl['ilim'].text = 'Ilimitados  %d' % STATS.get('hits_ilimitados', 0)
+        self.sl['ilim'].text = 'Ilimitados  %d' % self.stats.get('ilimitados', 0)
         self.sl['cpm'].text = 'CPM  %.0f' % cpm
         self.sl['tempo'].text = 'Tempo  %02d:%02d%s' % (m, s, ' (P)' if self.scan_paused else '')
         if 'errs' in self.sl:
             self.sl['errs'].text = '403:%d 429:%d TO:%d' % (
                 self.stats.get('err403', 0), self.stats.get('err429', 0), self.stats.get('timeout', 0))
         if 'path' in self.sl:
-            self.sl['path'].text = '\U0001f7e2ON \U0001f534OFF \U0001f7e0PROT \u26aa test  |  %s' % (PUBLIC_HITS or HITS_DIR)
+            self.sl['path'].text = '[color=22C55E]ON[/color] [color=EF4444]OFF[/color] [color=F59E0B]PROT[/color]  |  %s' % (PUBLIC_HITS or HITS_DIR)
         if 'px' in self.sl:
             with PROXY_L:
                 self.sl['px'].text = 'Proxies  %d' % len(PROXIES)
         if 'per' in self.sl and self.stats.get('per'):
-            parts = []
             ranked = sorted(self.stats['per'].items(), key=lambda x: x[1].get('hit', 0), reverse=True)
-            for srv, st in ranked[:5]:
-                short = srv.split(':')[0][:14]
+            lines = ['[b]Ranking[/b]']
+            for n, (srv, st) in enumerate(ranked[:5], 1):
+                short = srv.split(':')[0][:18]
                 hits = st.get('hit', 0)
                 last = str(st.get('last', '-'))
                 if hits > 0:
-                    parts.append('[color=22C55E]\U0001f7e2 %s h%d[/color]' % (short, hits))
-                elif '404' in last or '502' in last:
-                    parts.append('[color=EF4444]\U0001f534 %s[/color]' % short)
+                    lines.append('[color=22C55E]%d. ON  %s  %d hits[/color]' % (n, short, hits))
+                elif '404' in last or '502' in last or '410' in last:
+                    lines.append('[color=EF4444]%d. OFF %s[/color]' % (n, short))
                 elif '429' in last or '403' in last:
-                    parts.append('[color=F59E0B]\U0001f7e0 %s[/color]' % short)
+                    lines.append('[color=F59E0B]%d. PROT %s[/color]' % (n, short))
                 else:
-                    parts.append('[color=8B9BB0]\u26aa %s[/color]' % short)
-            self.sl['per'].text = '  '.join(parts) if parts else '-'
+                    lines.append('[color=8B9BB0]%d. ... %s[/color]' % (n, short))
+            self.sl['per'].text = '\n'.join(lines)
             self.sl['per'].markup = True
 
     def toggle_pause(self, *_):
