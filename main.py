@@ -50,6 +50,44 @@ COMBOS_API = 'https://api.github.com/repos/%s/%s/contents/combos' % (REPO_OWNER,
 COMBOS_RAW = 'https://raw.githubusercontent.com/%s/%s/%s/combos/' % (REPO_OWNER, REPO_NAME, REPO_BRANCH)
 TELEGRAM = 'https://t.me/+UfgoBcTQpwBlMDMx'
 APP_VERSION = '2.0.1'
+VERSION_URL = 'https://raw.githubusercontent.com/%s/%s/%s/version.json' % (REPO_OWNER, REPO_NAME, REPO_BRANCH)
+RELEASES_URL = 'https://github.com/%s/%s/releases/latest' % (REPO_OWNER, REPO_NAME)
+
+def ver_tuple(v):
+    try:
+        parts = []
+        for x in str(v).strip().lstrip('vV').split('.'):
+            n = ''
+            for ch in x:
+                if ch.isdigit():
+                    n += ch
+                else:
+                    break
+            parts.append(int(n) if n else 0)
+        while len(parts) < 3:
+            parts.append(0)
+        return tuple(parts[:3])
+    except Exception:
+        return (0, 0, 0)
+
+def open_url(url):
+    if not url:
+        return
+    try:
+        import webbrowser
+        webbrowser.open(url)
+        return
+    except Exception:
+        pass
+    try:
+        from jnius import autoclass
+        Intent = autoclass('android.content.Intent')
+        Uri = autoclass('android.net.Uri')
+        PythonActivity = autoclass('org.kivy.android.PythonActivity')
+        intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+        PythonActivity.mActivity.startActivity(intent)
+    except Exception:
+        pass
 
 try:
     import requests
@@ -708,7 +746,57 @@ class AScanApp(App):
         bar.add_widget(self.btn_pause)
         bar.add_widget(self.btn_stop)
         root.add_widget(bar)
+        Clock.schedule_once(lambda dt: self.check_update(), 1.2)
         return root
+
+    def check_update(self, *_):
+        if not requests:
+            return
+        def work():
+            try:
+                r = requests.get(VERSION_URL, timeout=12)
+                if r.status_code != 200:
+                    return
+                data = r.json()
+                latest = str(data.get('version') or data.get('latest') or '')
+                min_v = str(data.get('min_version') or latest)
+                force = bool(data.get('force', True))
+                apk = data.get('apk_url') or data.get('url') or RELEASES_URL
+                msg = data.get('message') or 'Nova versão disponível. Atualize o app.'
+                cur = ver_tuple(APP_VERSION)
+                need = ver_tuple(min_v) > cur or ver_tuple(latest) > cur
+                if not need:
+                    return
+                Clock.schedule_once(lambda dt: self.show_update_popup(latest, apk, msg, force), 0)
+            except Exception:
+                pass
+        threading.Thread(target=work, daemon=True).start()
+
+    def show_update_popup(self, latest, apk_url, msg, force=True):
+        box = BoxLayout(orientation='vertical', spacing=dp(10), padding=dp(14))
+        box.add_widget(T('Atualização %s' % latest, size=16, bold=True))
+        info = T('Sua versão: %s\n\n%s' % (APP_VERSION, msg), size=13, muted=False)
+        info.height = dp(90)
+        box.add_widget(info)
+        btn = Btn('ATUALIZAR AGORA', kind='green')
+        box.add_widget(btn)
+        if not force:
+            btn2 = Btn('Depois', kind='dark')
+            box.add_widget(btn2)
+        pop = Popup(
+            title='AScan Agent',
+            content=box,
+            size_hint=(0.92, 0.45),
+            auto_dismiss=not force,
+        )
+        def go(_):
+            open_url(apk_url)
+            if not force:
+                pop.dismiss()
+        btn.bind(on_press=go)
+        if not force:
+            btn2.bind(on_press=lambda *_: pop.dismiss())
+        pop.open()
 
     def log_msg(self, msg):
         if not any(x in str(msg) for x in ('HIT', 'ILIM', 'SKIP', 'Start', 'Fim', 'Parado', 'Combo', 'Proxies', 'Hits:')):
