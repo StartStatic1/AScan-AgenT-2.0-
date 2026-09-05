@@ -49,7 +49,7 @@ REPO_BRANCH = 'main'
 COMBOS_API = 'https://api.github.com/repos/%s/%s/contents/combos' % (REPO_OWNER, REPO_NAME)
 COMBOS_RAW = 'https://raw.githubusercontent.com/%s/%s/%s/combos/' % (REPO_OWNER, REPO_NAME, REPO_BRANCH)
 TELEGRAM = 'https://t.me/+UfgoBcTQpwBlMDMx'
-APP_VERSION = '2.0.1'
+APP_VERSION = '2.0.2'
 VERSION_URL = 'https://raw.githubusercontent.com/%s/%s/%s/version.json' % (REPO_OWNER, REPO_NAME, REPO_BRANCH)
 RELEASES_URL = 'https://github.com/%s/%s/releases/latest' % (REPO_OWNER, REPO_NAME)
 
@@ -411,52 +411,76 @@ def check_target(server, item, timeout=None, proxy=None, mode=None):
         meta['err'] = type(e).__name__
     return False, {}, meta
 
+def _fmt_ts(val):
+    if val in (None, '', '0', 0, 'null', 'None'):
+        return '-'
+    try:
+        return datetime.datetime.fromtimestamp(int(val)).strftime('%d/%m/%Y')
+    except Exception:
+        return str(val)
+
 def build_hit(server, item, data):
     user, pwd = item
     server = norm_server(server)
-    ui = data.get('user_info', {})
+    ui = data.get('user_info', {}) or {}
+    si = data.get('server_info', {}) or {}
     host = server.split(':')[0]
-    port = server.split(':')[1] if ':' in server else '80'
+    port = server.split(':')[1] if ':' in server else (str(si.get('port') or '80'))
     exp = ui.get('exp_date', '0')
-    ilim = exp in ('0', 'null', 'None', '')
+    created = ui.get('created_at', ui.get('create_date', '0'))
+    ilim = exp in ('0', 'null', 'None', '', None, 0)
+    dias_rest = '-'
     if not ilim:
         try:
             dias = int((int(exp) - time.time()) / 86400)
-            if dias > 365:
+            if dias > 3650:
                 ilim = True
+            else:
+                dias_rest = '%d dias' % max(0, dias)
         except Exception:
             ilim = True
-    exp_s = 'Ilimitado'
-    if not ilim:
-        try:
-            exp_s = datetime.datetime.fromtimestamp(int(exp)).strftime('%d/%m/%Y')
-        except Exception:
-            pass
+    exp_s = 'Ilimitado' if ilim else _fmt_ts(exp)
+    created_s = _fmt_ts(created)
     m3u = 'http://%s/get.php?username=%s&password=%s&type=m3u_plus&output=ts' % (server, user, pwd)
+    epg = 'http://%s/xmltv.php?username=%s&password=%s' % (server, user, pwd)
     plano = 'ILIMITADO' if ilim else 'PREMIUM'
-    emoji = '\u2705' if not ilim else '\u267e\ufe0f'
+    if str(ui.get('is_trial', '0')) in ('1', 'true', 'True'):
+        plano = 'TRIAL'
+    emoji = '\u267e\ufe0f' if ilim else '\u2705'
+    status = str(ui.get('status', 'Active') or 'Active').upper()
+    if status in ('1', 'TRUE', 'OK'):
+        status = 'ONLINE'
+    conex = '%s/%s' % (ui.get('active_cons', '0'), ui.get('max_connections', '1'))
+    msg = str(ui.get('message', '') or '').strip()
     txt = (
-        '%s AScan AgenT 2.0\n'
+        '%s AScan Agent\n'
+        '====================\n'
+        'Server : http://%s\n'
+        'DNS    : %s:%s\n'
         '--------------------\n'
-        'Server: http://%s\n'
-        'DNS: %s:%s\n'
-        '--------------------\n'
-        'User: %s\n'
-        'Pass: %s\n'
-        'Status: ONLINE\n'
-        'Plano: %s\n'
-        'Conex: %s/%s\n'
-        'Expira: %s\n'
+        'User   : %s\n'
+        'Pass   : %s\n'
+        'Status : %s\n'
+        'Plano  : %s\n'
+        'Conex  : %s\n'
+        'Criado : %s\n'
+        'Expira : %s%s\n'
         '--------------------\n'
         'M3U:\n%s\n'
-        'Combo: %s\n'
+        'EPG:\n%s\n'
         '--------------------\n'
+        'Combo  : %s\n'
+        '%s'
         'Telegram: %s\n'
+        '====================\n'
     ) % (
-        emoji, server, host, port, user, pwd,
-        plano,
-        ui.get('active_cons', '0'), ui.get('max_connections', '1'),
-        exp_s, m3u, COMBO_NAME, TELEGRAM,
+        emoji, server, host, port,
+        user, pwd, status, plano, conex,
+        created_s, exp_s,
+        (' (%s)' % dias_rest) if (not ilim and dias_rest != '-') else '',
+        m3u, epg, COMBO_NAME,
+        ('Msg    : %s\n' % msg) if msg else '',
+        TELEGRAM,
     )
     return txt, ilim
 
