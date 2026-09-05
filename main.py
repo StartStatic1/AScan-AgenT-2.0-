@@ -429,58 +429,60 @@ def build_hit(server, item, data):
     exp = ui.get('exp_date', '0')
     created = ui.get('created_at', ui.get('create_date', '0'))
     ilim = exp in ('0', 'null', 'None', '', None, 0)
-    dias_rest = '-'
+    dias_rest = ''
     if not ilim:
         try:
             dias = int((int(exp) - time.time()) / 86400)
             if dias > 3650:
                 ilim = True
             else:
-                dias_rest = '%d dias' % max(0, dias)
+                dias_rest = ' · %d dias' % max(0, dias)
         except Exception:
             ilim = True
     exp_s = 'Ilimitado' if ilim else _fmt_ts(exp)
     created_s = _fmt_ts(created)
     m3u = 'http://%s/get.php?username=%s&password=%s&type=m3u_plus&output=ts' % (server, user, pwd)
     epg = 'http://%s/xmltv.php?username=%s&password=%s' % (server, user, pwd)
-    plano = 'ILIMITADO' if ilim else 'PREMIUM'
-    if str(ui.get('is_trial', '0')) in ('1', 'true', 'True'):
-        plano = 'TRIAL'
-    emoji = '\u267e\ufe0f' if ilim else '\u2705'
+    if ilim:
+        plano, head = 'ILIMITADO', '\u267e\ufe0f HIT ILIMITADO'
+    elif str(ui.get('is_trial', '0')) in ('1', 'true', 'True'):
+        plano, head = 'TRIAL', '\u23f3 HIT TRIAL'
+    else:
+        plano, head = 'PREMIUM', '\u2705 HIT ONLINE'
     status = str(ui.get('status', 'Active') or 'Active').upper()
-    if status in ('1', 'TRUE', 'OK'):
+    if status in ('1', 'TRUE', 'OK', 'ACTIVE'):
         status = 'ONLINE'
     conex = '%s/%s' % (ui.get('active_cons', '0'), ui.get('max_connections', '1'))
     msg = str(ui.get('message', '') or '').strip()
     txt = (
-        '%s AScan Agent\n'
-        '====================\n'
-        'Server : http://%s\n'
-        'DNS    : %s:%s\n'
-        '--------------------\n'
-        'User   : %s\n'
-        'Pass   : %s\n'
-        'Status : %s\n'
-        'Plano  : %s\n'
-        'Conex  : %s\n'
-        'Criado : %s\n'
-        'Expira : %s%s\n'
-        '--------------------\n'
-        'M3U:\n%s\n'
-        'EPG:\n%s\n'
-        '--------------------\n'
-        'Combo  : %s\n'
+        '%s\n'
+        '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n'
+        '\U0001f310 Server : http://%s\n'
+        '\U0001f4bb DNS    : %s:%s\n'
+        '\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n'
+        '\U0001f464 User   : %s\n'
+        '\U0001f511 Pass   : %s\n'
+        '\U0001f7e2 Status : %s\n'
+        '\U0001f4cb Plano  : %s\n'
+        '\U0001f4f6 Conex  : %s\n'
+        '\U0001f4c5 Criado : %s\n'
+        '\u23f0 Expira : %s%s\n'
+        '\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n'
+        '\U0001f3ac M3U:\n%s\n'
+        '\U0001f4fa EPG:\n%s\n'
+        '\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n'
+        '\U0001f4c2 Combo  : %s\n'
         '%s'
-        'Telegram: %s\n'
-        '====================\n'
+        '\U0001f4e8 Telegram: %s\n'
+        '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n'
+        'AScan Agent %s\n'
     ) % (
-        emoji, server, host, port,
+        head, server, host, port,
         user, pwd, status, plano, conex,
-        created_s, exp_s,
-        (' (%s)' % dias_rest) if (not ilim and dias_rest != '-') else '',
+        created_s, exp_s, dias_rest,
         m3u, epg, COMBO_NAME,
-        ('Msg    : %s\n' % msg) if msg else '',
-        TELEGRAM,
+        ('\U0001f4ac Msg    : %s\n' % msg) if msg else '',
+        TELEGRAM, APP_VERSION,
     )
     return txt, ilim
 
