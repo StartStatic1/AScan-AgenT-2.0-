@@ -900,16 +900,20 @@ class AScanApp(App):
                     ok, data, meta = check_target(server, item, proxy=px, mode=ATK_MODE)
                     err = meta.get('err', '')
                     code = meta.get('code', 0)
-                    bad = (code in (404, 502, 410) or err in ('http_404', 'http_502', 'http_410'))
+                    net_fail = err in (
+                        'Timeout', 'ConnectTimeout', 'ReadTimeout',
+                        'ConnectionError', 'ProxyError', 'ConnectError',
+                        'NameResolutionError', 'NewConnectionError',
+                    ) or code in (0,)
                     with SERVER_DEAD_L:
-                        if ok:
+                        if ok or (code and code not in (0,) and not net_fail):
                             SERVER_STREAK[server] = 0
-                        elif bad:
+                        elif net_fail:
                             SERVER_STREAK[server] = SERVER_STREAK.get(server, 0) + 1
-                            if SERVER_STREAK[server] >= 12 and server not in SERVER_DEAD:
+                            if SERVER_STREAK[server] >= 40 and server not in SERVER_DEAD:
                                 SERVER_DEAD.add(server)
                                 Clock.schedule_once(
-                                    lambda dt, s=server: self.log_msg('SKIP %s (OFF x12)' % s.split(':')[0][:18]), 0)
+                                    lambda dt, s=server: self.log_msg('SKIP %s (rede x40)' % s.split(':')[0][:18]), 0)
                         else:
                             SERVER_STREAK[server] = max(0, SERVER_STREAK.get(server, 0) - 1)
                     with _lock:
