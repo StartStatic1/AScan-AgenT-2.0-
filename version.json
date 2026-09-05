@@ -1,7 +1,7 @@
 {
   "version": "2.0.3",
-  "min_version": "2.0.3",
+  "min_version": "2.0.0",
   "force": false,
   "apk_url": "https://github.com/StartStatic1/AScan-AgenT-2.0-/releases/latest",
-  "message": "Nova versão 2.0.2: hits com EPG, data de criação e layout melhorado."
+  "message": "AScan Agent 2.0.3 — emoticons, EPG, Criado, assinatura fixa."
 }
