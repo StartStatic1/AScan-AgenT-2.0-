@@ -48,6 +48,7 @@ REPO_NAME = 'AScan-AgenT-2.0-'
 REPO_BRANCH = 'main'
 COMBOS_API = 'https://api.github.com/repos/%s/%s/contents/combos' % (REPO_OWNER, REPO_NAME)
 COMBOS_RAW = 'https://raw.githubusercontent.com/%s/%s/%s/combos/' % (REPO_OWNER, REPO_NAME, REPO_BRANCH)
+TELEGRAM = 'https://t.me/+UfgoBcTQpwBlMDMx'
 
 try:
     import requests
@@ -181,6 +182,11 @@ def download_proxies_online():
         'https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=5000&country=all&ssl=all&anonymity=all',
         'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt',
         'https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt',
+        'https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/http.txt',
+        'https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt',
+        'https://raw.githubusercontent.com/jetkai/proxy-list/main/online-proxies/txt/proxies-http.txt',
+        'https://raw.githubusercontent.com/roosterkid/openproxylist/main/HTTPS_RAW.txt',
+        'https://raw.githubusercontent.com/mmpx12/proxy-list/master/http.txt',
     ]
     found = []
     if not requests:
@@ -195,7 +201,7 @@ def download_proxies_online():
                         if '://' not in line:
                             line = 'http://' + line
                         found.append(line)
-            if len(found) >= 80:
+            if len(found) >= 150:
                 break
         except Exception:
             continue
@@ -205,7 +211,7 @@ def download_proxies_online():
         if p not in seen:
             seen.add(p)
             uniq.append(p)
-    return uniq[:200]
+    return uniq[:400]
 
 def session(server=None, proxy=None):
     if requests is None:
@@ -336,25 +342,30 @@ def build_hit(server, item, data):
         except Exception:
             pass
     m3u = 'http://%s/get.php?username=%s&password=%s&type=m3u_plus&output=ts' % (server, user, pwd)
+    plano = 'ILIMITADO' if ilim else 'PREMIUM'
+    emoji = '\u267e\ufe0f' if ilim else '\u2705'
     txt = (
-        'AScan AgenT 2.0 [HIT]\n'
-        'Servidor  -> http://%s\n'
-        'DNS       -> %s:%s\n'
-        '--------------------------\n'
-        'Usuario   -> %s\n'
-        'Senha     -> %s\n'
-        'Status    -> ONLINE\n'
-        'Plano     -> %s\n'
-        'Conexoes  -> %s/%s\n'
-        'Expira    -> %s\n'
-        '--------------------------\n'
-        'M3U -> %s\n'
-        'Combo -> %s\n'
+        '%s AScan AgenT 2.0\n'
+        '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n'
+        '\U0001f310 Server: http://%s\n'
+        '\U0001f4e1 DNS: %s:%s\n'
+        '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n'
+        '\U0001f464 User: %s\n'
+        '\U0001f511 Pass: %s\n'
+        '\U0001f4f6 Status: ONLINE\n'
+        '\U0001f48e Plano: %s\n'
+        '\U0001f465 Conex: %s/%s\n'
+        '\U0001f4c5 Expira: %s\n'
+        '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n'
+        '\U0001f4fa M3U:\n%s\n'
+        '\U0001f4c1 Combo: %s\n'
+        '\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n'
+        '\U0001f4ac Telegram: %s\n'
     ) % (
-        server, host, port, user, pwd,
-        'ILIMITADO' if ilim else 'PREMIUM',
+        emoji, server, host, port, user, pwd,
+        plano,
         ui.get('active_cons', '0'), ui.get('max_connections', '1'),
-        exp_s, m3u, COMBO_NAME,
+        exp_s, m3u, COMBO_NAME, TELEGRAM,
     )
     return txt, ilim
 
@@ -845,8 +856,9 @@ class AScanApp(App):
                         tag = 'ILIM' if ilim else 'HIT'
                         Clock.schedule_once(
                             lambda dt, s=server.split(':')[0][:16], u=item[0][:10], tg=tag:
-                                self.log_msg('[color=%s]%s[/color] %s | %s' % (
-                                    'F59E0B' if tg == 'ILIM' else '22C55E', tg, s, u)), 0)
+                                self.log_msg('[color=%s]%s %s[/color] | %s' % (
+                                    'F59E0B' if tg == 'ILIM' else '22C55E',
+                                    '\u267e\ufe0f ILIM' if tg == 'ILIM' else '\u2705 HIT', s, u)), 0)
                 except Exception:
                     with _lock:
                         self.stats['other'] += 1
@@ -894,7 +906,7 @@ class AScanApp(App):
             self.sl['errs'].text = '403:%d 429:%d TO:%d' % (
                 self.stats.get('err403', 0), self.stats.get('err429', 0), self.stats.get('timeout', 0))
         if 'path' in self.sl:
-            self.sl['path'].text = 'Hits: %s' % (PUBLIC_HITS or HITS_DIR)
+            self.sl['path'].text = '\U0001f7e2ON \U0001f534OFF \U0001f7e0PROT \u26aa test  |  %s' % (PUBLIC_HITS or HITS_DIR)
         if 'px' in self.sl:
             with PROXY_L:
                 self.sl['px'].text = 'Proxies  %d' % len(PROXIES)
@@ -906,13 +918,13 @@ class AScanApp(App):
                 hits = st.get('hit', 0)
                 last = str(st.get('last', '-'))
                 if hits > 0:
-                    parts.append('[color=22C55E]ON %s h%d[/color]' % (short, hits))
+                    parts.append('[color=22C55E]\U0001f7e2 %s h%d[/color]' % (short, hits))
                 elif '404' in last or '502' in last:
-                    parts.append('[color=EF4444]OFF %s[/color]' % short)
+                    parts.append('[color=EF4444]\U0001f534 %s[/color]' % short)
                 elif '429' in last or '403' in last:
-                    parts.append('[color=F59E0B]PROT %s[/color]' % short)
+                    parts.append('[color=F59E0B]\U0001f7e0 %s[/color]' % short)
                 else:
-                    parts.append('[color=8B9BB0].. %s[/color]' % short)
+                    parts.append('[color=8B9BB0]\u26aa %s[/color]' % short)
             self.sl['per'].text = '  '.join(parts) if parts else '-'
             self.sl['per'].markup = True
 
