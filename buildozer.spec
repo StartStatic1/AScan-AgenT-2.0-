@@ -4,7 +4,7 @@ package.name = ascanagent
 package.domain = com.ascan
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,ttf,txt
-version = 2.0.2
+version = 2.0.3
 
 requirements = python3==3.11.9,hostpython3==3.11.9,kivy==2.3.0,requests,urllib3,charset-normalizer,idna,certifi,dnspython
 

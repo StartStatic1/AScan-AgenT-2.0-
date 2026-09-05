@@ -74,6 +74,14 @@ jobs:
         rm -rf bin
         buildozer android clean || true
 
+    - name: Install fixed debug keystore (same signature every build)
+      run: |
+        mkdir -p ~/.buildozer/android ~/.android
+        base64 -d keystore/ascan-debug.keystore.b64 > ~/.buildozer/android/debug.keystore
+        cp ~/.buildozer/android/debug.keystore ~/.android/debug.keystore
+        ls -la ~/.buildozer/android/debug.keystore
+        keytool -list -keystore ~/.buildozer/android/debug.keystore -storepass android || true
+
     - name: Build APK
       run: |
         buildozer -v android debug
