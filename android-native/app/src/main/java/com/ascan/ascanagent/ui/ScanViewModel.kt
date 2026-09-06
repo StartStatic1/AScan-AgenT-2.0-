@@ -7,13 +7,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.ascan.ascanagent.data.AppConfig
 import com.ascan.ascanagent.data.AtkMode
 import com.ascan.ascanagent.data.Credential
 import com.ascan.ascanagent.data.Hit
 import com.ascan.ascanagent.data.HitStorage
+import com.ascan.ascanagent.data.RemoteVersion
 import com.ascan.ascanagent.data.ScanStats
 import com.ascan.ascanagent.data.ScannerEngine
 import com.ascan.ascanagent.data.ServerStatus
+import com.ascan.ascanagent.data.UpdateChecker
 import com.ascan.ascanagent.data.XtreamApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -50,6 +53,8 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
     var statusText by mutableStateOf("Pronto")
     var lastM3u by mutableStateOf("")
     var loadingCombo by mutableStateOf(false)
+    var updateInfo by mutableStateOf<RemoteVersion?>(null)
+    var showUpdate by mutableStateOf(false)
 
     init {
         engine.onStats = { s ->
@@ -93,6 +98,22 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         refreshCombos()
+        checkUpdate()
+    }
+
+    fun checkUpdate() {
+        viewModelScope.launch {
+            val remote = withContext(Dispatchers.IO) { UpdateChecker.fetch() } ?: return@launch
+            if (UpdateChecker.isNewer(remote.version)) {
+                updateInfo = remote
+                showUpdate = true
+                log("Update: ${remote.version} — ${remote.message}")
+            }
+        }
+    }
+
+    fun dismissUpdate() {
+        showUpdate = false
     }
 
     fun log(msg: String) {
