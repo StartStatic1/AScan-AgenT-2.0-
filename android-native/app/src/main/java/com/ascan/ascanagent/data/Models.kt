@@ -40,13 +40,6 @@ data class ScanStats(
     val proxies: Int = 0
 )
 
-/**
- * Modos alinhados ao CLI:
- * - Padrao: max velocidade, sem delay
- * - Adaptativo: leve pausa, timeout curto
- * - Furtivo: mais lento, mais retries
- * - Camaleao / Bypass: intermediarios
- */
 enum class AtkMode(val label: String, val timeoutSec: Long, val delayMs: Long, val retries: Int) {
     PADRAO("Padrao", 5, 0, 1),
     ADAPTATIVO("Adaptativo", 4, 0, 1),
@@ -56,7 +49,7 @@ enum class AtkMode(val label: String, val timeoutSec: Long, val delayMs: Long, v
 }
 
 object AppConfig {
-    const val VERSION = "2.0.5-native"
+    const val VERSION = "2.0.6-native"
     const val TELEGRAM = "https://t.me/+UfgoBcTQpwBlMDMx"
     const val REPO_OWNER = "StartStatic1"
     const val REPO_NAME = "AScan-AgenT-2.0-"
