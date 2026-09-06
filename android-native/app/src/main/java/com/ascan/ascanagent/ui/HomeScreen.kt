@@ -1,7 +1,5 @@
 package com.ascan.ascanagent.ui
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -45,7 +43,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -70,7 +67,6 @@ import com.ascan.ascanagent.ui.theme.Text
 @Composable
 fun HomeScreen(vm: ScanViewModel) {
     val clipboard = LocalClipboardManager.current
-    val context = LocalContext.current
     val fieldColors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = Purple,
         unfocusedBorderColor = Line,
@@ -86,20 +82,37 @@ fun HomeScreen(vm: ScanViewModel) {
     if (vm.showUpdate && vm.updateInfo != null) {
         val info = vm.updateInfo!!
         AlertDialog(
-            onDismissRequest = { if (!info.force) vm.dismissUpdate() },
+            onDismissRequest = { if (!info.force && vm.downloadProgress < 0) vm.dismissUpdate() },
             title = { Text("Atualização ${info.version}") },
-            text = { Text(info.message) },
+            text = {
+                Column {
+                    Text(info.message)
+                    if (vm.downloadProgress in 0..100) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            if (vm.downloadProgress >= 100) "Pronto — confirme no instalador"
+                            else "Baixando… ${vm.downloadProgress}%",
+                            color = Green
+                        )
+                    }
+                    if (vm.downloadProgress == -2 && vm.downloadError.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(vm.downloadError, color = Red)
+                    }
+                }
+            },
             confirmButton = {
-                TextButton(onClick = {
-                    try {
-                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.apkUrl)))
-                    } catch (_: Exception) {}
-                    if (!info.force) vm.dismissUpdate()
-                }) { Text("Baixar") }
+                TextButton(
+                    onClick = { vm.applyUpdate() },
+                    enabled = vm.downloadProgress < 0 || vm.downloadProgress == -2
+                ) { Text(if (vm.downloadProgress in 0..99) "…" else "Atualizar") }
             },
             dismissButton = {
                 if (!info.force) {
-                    TextButton(onClick = { vm.dismissUpdate() }) { Text("Depois") }
+                    TextButton(
+                        onClick = { vm.dismissUpdate() },
+                        enabled = vm.downloadProgress < 0 || vm.downloadProgress == -2
+                    ) { Text("Depois") }
                 }
             }
         )
