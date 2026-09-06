@@ -1,5 +1,7 @@
 package com.ascan.ascanagent.ui
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -20,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -31,6 +34,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -41,6 +45,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -65,6 +70,7 @@ import com.ascan.ascanagent.ui.theme.Text
 @Composable
 fun HomeScreen(vm: ScanViewModel) {
     val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
     val fieldColors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = Purple,
         unfocusedBorderColor = Line,
@@ -76,6 +82,28 @@ fun HomeScreen(vm: ScanViewModel) {
         focusedLabelColor = Muted,
         unfocusedLabelColor = Muted
     )
+
+    if (vm.showUpdate && vm.updateInfo != null) {
+        val info = vm.updateInfo!!
+        AlertDialog(
+            onDismissRequest = { if (!info.force) vm.dismissUpdate() },
+            title = { Text("Atualização ${info.version}") },
+            text = { Text(info.message) },
+            confirmButton = {
+                TextButton(onClick = {
+                    try {
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.apkUrl)))
+                    } catch (_: Exception) {}
+                    if (!info.force) vm.dismissUpdate()
+                }) { Text("Baixar") }
+            },
+            dismissButton = {
+                if (!info.force) {
+                    TextButton(onClick = { vm.dismissUpdate() }) { Text("Depois") }
+                }
+            }
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -308,7 +336,10 @@ fun HomeScreen(vm: ScanViewModel) {
                         vm.ranking.take(8).forEachIndexed { i, s ->
                             val color = when (s.state) {
                                 "ON" -> Green
+                                "SCAN" -> PurpleSoft
                                 "PROT" -> Orange
+                                "DONE" -> Muted
+                                "WAIT" -> Muted
                                 "OFF" -> Red
                                 else -> Muted
                             }
@@ -341,6 +372,8 @@ fun HomeScreen(vm: ScanViewModel) {
                                 line.startsWith("[HIT]") -> Green
                                 line.startsWith("Salvo:") -> Blue
                                 line.startsWith("OK Proxies") -> Green
+                                line.startsWith("→") -> PurpleSoft
+                                line.startsWith("✓") -> Green
                                 else -> Muted
                             },
                             fontSize = 12.sp,
