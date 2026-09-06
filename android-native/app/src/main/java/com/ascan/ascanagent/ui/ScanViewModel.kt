@@ -1,8 +1,6 @@
 package com.ascan.ascanagent.ui
 
 import android.app.Application
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -40,6 +38,7 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
     var selectedCombo by mutableStateOf("")
 
     var proxyCount by mutableStateOf(0)
+    var proxyLoading by mutableStateOf(false)
     private var proxies: List<String> = emptyList()
 
     var running by mutableStateOf(false)
@@ -68,7 +67,14 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
             }
             viewModelScope.launch(Dispatchers.IO) {
                 try {
-                    HitStorage.save(getApplication(), h)
+                    val path = HitStorage.save(getApplication(), h)
+                    viewModelScope.launch(Dispatchers.Main.immediate) {
+                        if (path.isNotBlank()) {
+                            log("Salvo: ${path.substringAfterLast('/')}")
+                        } else {
+                            log("Hit OK (pasta app)")
+                        }
+                    }
                 } catch (_: Exception) {
                 }
             }
@@ -124,7 +130,9 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun loadProxiesOnline() {
+        if (proxyLoading) return
         viewModelScope.launch {
+            proxyLoading = true
             log("Baixando proxies...")
             val urls = listOf(
                 "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=5000&country=all",
@@ -148,13 +156,15 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
             }
             proxies = found.distinct().take(2000)
             proxyCount = proxies.size
-            log(if (proxyCount > 0) "OK Proxies online: $proxyCount" else "Nenhum proxy")
+            proxyLoading = false
+            log(if (proxyCount > 0) "OK Proxies prontos: $proxyCount" else "Nenhum proxy")
         }
     }
 
     fun clearProxies() {
         proxies = emptyList()
         proxyCount = 0
+        proxyLoading = false
         log("Proxies limpos (direto)")
     }
 
@@ -202,5 +212,9 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
         log("Parado pelo usuario")
     }
 
-    fun hitsPath(): String = HitStorage.hitsDir(getApplication()).absolutePath
+    fun hitsPath(): String {
+        val pub = "/storage/emulated/0/Download/AScan_App/HITS"
+        return if (HitStorage.lastSavePath.isNotBlank()) HitStorage.lastSavePath
+        else pub
+    }
 }
