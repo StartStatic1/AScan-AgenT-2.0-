@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
@@ -49,6 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ascan.ascanagent.data.AtkMode
+import com.ascan.ascanagent.data.Hit
 import com.ascan.ascanagent.ui.theme.Bg
 import com.ascan.ascanagent.ui.theme.Blue
 import com.ascan.ascanagent.ui.theme.Card
@@ -78,6 +80,7 @@ fun HomeScreen(vm: ScanViewModel) {
         focusedLabelColor = Muted,
         unfocusedLabelColor = Muted
     )
+    val scanning = vm.running
 
     if (vm.showUpdate && vm.updateInfo != null) {
         val info = vm.updateInfo!!
@@ -124,6 +127,7 @@ fun HomeScreen(vm: ScanViewModel) {
             .background(Bg)
             .padding(horizontal = 14.dp, vertical = 10.dp)
     ) {
+        // Header
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
@@ -151,139 +155,161 @@ fun HomeScreen(vm: ScanViewModel) {
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            item {
-                CardBox {
-                    Text("CONFIGURAÇÃO", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = vm.server1,
-                        onValueChange = { vm.server1 = it },
-                        label = { Text("Servidor 1") },
-                        placeholder = { Text("host:porta", color = Muted) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = fieldColors
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    OutlinedTextField(
-                        value = vm.server2,
-                        onValueChange = { vm.server2 = it },
-                        label = { Text("Servidor 2 (opcional)") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = fieldColors
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    OutlinedTextField(
-                        value = vm.server3,
-                        onValueChange = { vm.server3 = it },
-                        label = { Text("Servidor 3 (opcional)") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = fieldColors
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // —— Config só quando NÃO está rodando ——
+            if (!scanning) {
+                item {
+                    CardBox {
+                        Text("CONFIGURAÇÃO", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(8.dp))
                         OutlinedTextField(
-                            value = vm.threads,
-                            onValueChange = { vm.threads = it.filter { ch -> ch.isDigit() }.take(2) },
-                            label = { Text("Threads") },
+                            value = vm.server1,
+                            onValueChange = { vm.server1 = it },
+                            label = { Text("Servidor 1") },
+                            placeholder = { Text("host:porta", color = Muted) },
                             singleLine = true,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.fillMaxWidth(),
                             colors = fieldColors
                         )
-                        ModeDropdown(vm, fieldColors, Modifier.weight(1.4f))
-                    }
-                }
-            }
-
-            item {
-                CardBox {
-                    Text("COMBO ONLINE", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    var expanded by remember { mutableStateOf(false) }
-                    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
-                        OutlinedTextField(
-                            value = vm.selectedCombo.ifEmpty { "Selecione" },
-                            onValueChange = {},
-                            readOnly = true,
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
-                            modifier = Modifier.menuAnchor().fillMaxWidth(),
-                            colors = fieldColors
-                        )
-                        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                            vm.comboList.forEach { (name, _) ->
-                                DropdownMenuItem(
-                                    text = { Text(name) },
-                                    onClick = {
-                                        vm.selectedCombo = name
-                                        expanded = false
-                                    }
-                                )
-                            }
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
-                            onClick = { vm.loadSelectedCombo() },
-                            enabled = !vm.loadingCombo,
-                            colors = ButtonDefaults.buttonColors(containerColor = Blue),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            if (vm.loadingCombo) {
-                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = Color.White)
-                            } else {
-                                Text("USAR COMBO")
-                            }
-                        }
-                        Button(
-                            onClick = { vm.refreshCombos() },
-                            colors = ButtonDefaults.buttonColors(containerColor = Card2),
-                            modifier = Modifier.weight(0.7f)
-                        ) { Text("Atualizar") }
-                    }
-                    if (vm.comboCount > 0) {
                         Spacer(modifier = Modifier.height(6.dp))
-                        Text("✓ ${vm.comboName} — ${vm.comboCount} credenciais", color = Green, fontSize = 13.sp)
+                        OutlinedTextField(
+                            value = vm.server2,
+                            onValueChange = { vm.server2 = it },
+                            label = { Text("Servidor 2 (opcional)") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = fieldColors
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        OutlinedTextField(
+                            value = vm.server3,
+                            onValueChange = { vm.server3 = it },
+                            label = { Text("Servidor 3 (opcional)") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = fieldColors
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = vm.threads,
+                                onValueChange = { vm.threads = it.filter { ch -> ch.isDigit() }.take(2) },
+                                label = { Text("Threads") },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f),
+                                colors = fieldColors
+                            )
+                            ModeDropdown(vm, fieldColors, Modifier.weight(1.4f))
+                        }
+                    }
+                }
+
+                item {
+                    CardBox {
+                        Text("COMBO ONLINE", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        var expanded by remember { mutableStateOf(false) }
+                        ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+                            OutlinedTextField(
+                                value = vm.selectedCombo.ifEmpty { "Selecione" },
+                                onValueChange = {},
+                                readOnly = true,
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+                                modifier = Modifier.menuAnchor().fillMaxWidth(),
+                                colors = fieldColors
+                            )
+                            ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                                vm.comboList.forEach { (name, _) ->
+                                    DropdownMenuItem(
+                                        text = { Text(name) },
+                                        onClick = {
+                                            vm.selectedCombo = name
+                                            expanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = { vm.loadSelectedCombo() },
+                                enabled = !vm.loadingCombo,
+                                colors = ButtonDefaults.buttonColors(containerColor = Blue),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                if (vm.loadingCombo) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp,
+                                        color = Color.White
+                                    )
+                                } else {
+                                    Text("USAR COMBO")
+                                }
+                            }
+                            Button(
+                                onClick = { vm.refreshCombos() },
+                                colors = ButtonDefaults.buttonColors(containerColor = Card2),
+                                modifier = Modifier.weight(0.7f)
+                            ) { Text("Atualizar") }
+                        }
+                        if (vm.comboCount > 0) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text("✓ ${vm.comboName} — ${vm.comboCount} credenciais", color = Green, fontSize = 13.sp)
+                        }
+                    }
+                }
+
+                item {
+                    CardBox {
+                        Text("PROXY", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            when {
+                                vm.proxyLoading -> "Baixando proxies..."
+                                vm.proxyCount > 0 -> "Pronto · ${vm.proxyCount} proxies"
+                                else -> "Sem proxy (direto)"
+                            },
+                            color = when {
+                                vm.proxyLoading -> Orange
+                                vm.proxyCount > 0 -> Green
+                                else -> Muted
+                            },
+                            fontSize = 13.sp
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = { vm.loadProxiesOnline() },
+                                enabled = !vm.proxyLoading,
+                                colors = ButtonDefaults.buttonColors(containerColor = Blue),
+                                modifier = Modifier.weight(1f)
+                            ) { Text(if (vm.proxyLoading) "..." else "Online") }
+                            Button(
+                                onClick = { vm.clearProxies() },
+                                colors = ButtonDefaults.buttonColors(containerColor = Red),
+                                modifier = Modifier.weight(1f)
+                            ) { Text("Limpar") }
+                        }
+                    }
+                }
+            } else {
+                // Durante o scan: resumo mínimo
+                item {
+                    CardBox {
+                        if (vm.comboCount > 0) {
+                            Text("✓ ${vm.comboName} — ${vm.comboCount} credenciais", color = Green, fontSize = 13.sp)
+                        }
+                        Text(
+                            if (vm.proxyCount > 0) "Proxy · ${vm.proxyCount}" else "Direto (sem proxy)",
+                            color = Muted,
+                            fontSize = 12.sp
+                        )
                     }
                 }
             }
 
-            item {
-                CardBox {
-                    Text("PROXY", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        when {
-                            vm.proxyLoading -> "Baixando proxies..."
-                            vm.proxyCount > 0 -> "Pronto · ${vm.proxyCount} proxies"
-                            else -> "Sem proxy (direto)"
-                        },
-                        color = when {
-                            vm.proxyLoading -> Orange
-                            vm.proxyCount > 0 -> Green
-                            else -> Muted
-                        },
-                        fontSize = 13.sp
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
-                            onClick = { vm.loadProxiesOnline() },
-                            enabled = !vm.proxyLoading,
-                            colors = ButtonDefaults.buttonColors(containerColor = Blue),
-                            modifier = Modifier.weight(1f)
-                        ) { Text(if (vm.proxyLoading) "..." else "Online") }
-                        Button(
-                            onClick = { vm.clearProxies() },
-                            colors = ButtonDefaults.buttonColors(containerColor = Red),
-                            modifier = Modifier.weight(1f)
-                        ) { Text("Limpar") }
-                    }
-                }
-            }
-
+            // Controles sempre visíveis
             item {
                 Button(
                     onClick = { if (vm.running) vm.stop() else vm.start() },
@@ -304,7 +330,10 @@ fun HomeScreen(vm: ScanViewModel) {
             }
 
             item {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     ActionBtn("PAUSAR", Orange, Modifier.weight(1f)) { vm.togglePause() }
                     ActionBtn("COPIAR", Blue, Modifier.weight(1f)) {
                         val t = vm.hits.joinToString("\n") { "${it.user}:${it.pass}" }
@@ -342,6 +371,12 @@ fun HomeScreen(vm: ScanViewModel) {
             item {
                 CardBox {
                     Text("RANKING", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "ON=vivo · SCAN=agora · WAIT=fila · PROT=403 · DONE=fim",
+                        color = Muted,
+                        fontSize = 10.sp
+                    )
                     Spacer(modifier = Modifier.height(6.dp))
                     if (vm.ranking.isEmpty()) {
                         Text("—", color = Muted)
@@ -371,34 +406,73 @@ fun HomeScreen(vm: ScanViewModel) {
 
             item {
                 CardBox {
-                    Text("HITS / ATIVIDADE", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(6.dp))
-                    val lines = if (vm.hits.isNotEmpty()) {
-                        vm.hits.take(30).map { "[HIT] (${it.server}) ${it.user}:${it.pass}" }
+                    Text("HITS", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    if (vm.hits.isEmpty()) {
+                        // logs de atividade quando sem hit
+                        vm.logs.take(12).forEach { line ->
+                            Text(
+                                line,
+                                color = when {
+                                    line.startsWith("→") -> PurpleSoft
+                                    line.startsWith("✓") -> Green
+                                    line.startsWith("OK") -> Green
+                                    else -> Muted
+                                },
+                                fontSize = 12.sp,
+                                fontFamily = FontFamily.Monospace,
+                                modifier = Modifier.padding(vertical = 1.dp)
+                            )
+                        }
+                        if (vm.logs.isEmpty()) {
+                            Text("Aguardando hits...", color = Muted, fontSize = 12.sp)
+                        }
                     } else {
-                        vm.logs.take(25)
+                        vm.hits.take(15).forEach { hit ->
+                            HitCard(hit)
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
                     }
-                    lines.forEach { line ->
-                        Text(
-                            line,
-                            color = when {
-                                line.startsWith("[HIT]") -> Green
-                                line.startsWith("Salvo:") -> Blue
-                                line.startsWith("OK Proxies") -> Green
-                                line.startsWith("→") -> PurpleSoft
-                                line.startsWith("✓") -> Green
-                                else -> Muted
-                            },
-                            fontSize = 12.sp,
-                            fontFamily = FontFamily.Monospace,
-                            modifier = Modifier.padding(vertical = 1.dp)
-                        )
-                    }
-                    if (lines.isEmpty()) Text("Aguardando...", color = Muted, fontSize = 12.sp)
                 }
             }
 
             item { Spacer(modifier = Modifier.height(20.dp)) }
+        }
+    }
+}
+
+@Composable
+private fun HitCard(hit: Hit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Card2)
+            .border(1.dp, Green.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+            .padding(12.dp)
+    ) {
+        val head = when {
+            hit.unlimited -> "✅ HIT ILIMITADO"
+            hit.plan.equals("TRIAL", true) -> "✅ HIT TRIAL"
+            else -> "✅ HIT ONLINE"
+        }
+        Text(head, color = Green, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+        Spacer(modifier = Modifier.height(4.dp))
+        Text("🌐 ${hit.server}", color = Text, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+        Text("👤 ${hit.user}", color = Text, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+        Text("🔑 ${hit.pass}", color = Text, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+        Text(
+            "📋 ${hit.plan}  ·  📶 ${hit.connections}  ·  ${hit.status}",
+            color = PurpleSoft,
+            fontSize = 12.sp
+        )
+        val expLine = buildString {
+            append("⏰ ${hit.expires}")
+            if (hit.daysLeft.isNotBlank()) append(hit.daysLeft)
+        }
+        Text(expLine, color = Orange, fontSize = 11.sp)
+        if (hit.created.isNotBlank() && hit.created != "—" && hit.created != "0") {
+            Text("📅 Criado ${hit.created}", color = Muted, fontSize = 11.sp)
         }
     }
 }
