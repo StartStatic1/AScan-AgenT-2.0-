@@ -11,11 +11,12 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Salva hits:
- * 1) Pasta do app (sempre funciona)
- * 2) Download publico /AScan_App/HITS (mesmo arquivo, append)
+ * 1) Pasta do app (sempre 1 arquivo por servidor + HITS_GERAL — append)
+ * 2) Download publico (mesmo nome, append; URI em cache para nao duplicar)
  */
 object HitStorage {
 
@@ -25,6 +26,9 @@ object HitStorage {
     @Volatile
     var lastSavePath: String = ""
         private set
+
+    /** Cache de URI MediaStore por nome de arquivo — evita HITS_GERAL (1)(2)(3)... */
+    private val publicUriCache = ConcurrentHashMap<String, Uri>()
 
     fun hitsDir(context: Context): File {
         resolvedDir?.let { if (it.exists() || it.mkdirs()) return it }
@@ -48,7 +52,10 @@ object HitStorage {
         }
 
         val fallback = File(context.filesDir, "HITS")
-        try { fallback.mkdirs() } catch (_: Exception) {}
+        try {
+            fallback.mkdirs()
+        } catch (_: Exception) {
+        }
         resolvedDir = fallback
         return fallback
     }
@@ -67,13 +74,14 @@ object HitStorage {
 
             var pathShown = ""
             synchronized(this) {
+                // Sempre: pasta do app (1 arquivo, append real)
                 val f1 = File(dir, serverName)
                 appendSafe(f1, block)
                 appendSafe(File(dir, "HITS_GERAL.txt"), block)
                 if (hit.unlimited) appendSafe(File(dir, "ILIMITADOS.txt"), block)
                 pathShown = f1.absolutePath
 
-                // Publico: Download/AScan_App/HITS (mesmo nome, append)
+                // Publico: so 1x por nome (cache URI)
                 val pub = mirrorPublic(context, serverName, block)
                 if (pub != null) pathShown = pub
                 mirrorPublic(context, "HITS_GERAL.txt", block)
@@ -94,19 +102,31 @@ object HitStorage {
         }
     }
 
-    /** Retorna caminho amigavel se gravou no Download publico */
     private fun mirrorPublic(context: Context, fileName: String, block: String): String? {
         return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val resolver = context.contentResolver
                 val collection = MediaStore.Downloads.EXTERNAL_CONTENT_URI
                 val rel = Environment.DIRECTORY_DOWNLOADS + "/AScan_App/HITS"
-                val uri = findOrCreateDownload(resolver, collection, fileName, rel) ?: return null
-                resolver.openOutputStream(uri, "wa")?.use { out ->
-                    out.write(block.toByteArray(Charsets.UTF_8))
-                    out.flush()
+                val uri = resolvePublicUri(resolver, collection, fileName, rel) ?: return null
+                // "wa" = append; se falhar tenta recriar 1 vez
+                val ok = try {
+                    resolver.openOutputStream(uri, "wa")?.use { out ->
+                        out.write(block.toByteArray(Charsets.UTF_8))
+                        out.flush()
+                    }
+                    true
+                } catch (_: Exception) {
+                    publicUriCache.remove(fileName)
+                    val uri2 = resolvePublicUri(resolver, collection, fileName, rel, forceNew = true)
+                        ?: return null
+                    resolver.openOutputStream(uri2, "wa")?.use { out ->
+                        out.write(block.toByteArray(Charsets.UTF_8))
+                        out.flush()
+                    }
+                    true
                 }
-                "/storage/emulated/0/Download/AScan_App/HITS/$fileName"
+                if (ok) "/storage/emulated/0/Download/AScan_App/HITS/$fileName" else null
             } else {
                 val pub = File(
                     Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
@@ -122,26 +142,30 @@ object HitStorage {
         }
     }
 
-    private fun findOrCreateDownload(
+    private fun resolvePublicUri(
         resolver: android.content.ContentResolver,
         collection: Uri,
         fileName: String,
-        relativePath: String
+        relativePath: String,
+        forceNew: Boolean = false
     ): Uri? {
-        // Procura arquivo existente com mesmo nome (para append)
-        try {
-            val projection = arrayOf(MediaStore.Downloads._ID)
-            val selection =
-                MediaStore.Downloads.DISPLAY_NAME + "=? AND " +
-                    MediaStore.Downloads.RELATIVE_PATH + " LIKE ?"
-            val args = arrayOf(fileName, "%AScan_App/HITS%")
-            resolver.query(collection, projection, selection, args, null)?.use { c ->
-                if (c.moveToFirst()) {
-                    val id = c.getLong(0)
-                    return ContentUris.withAppendedId(collection, id)
+        if (!forceNew) {
+            publicUriCache[fileName]?.let { return it }
+
+            // Busca existente so pelo nome (evita duplicar por path diferente)
+            try {
+                val projection = arrayOf(MediaStore.Downloads._ID, MediaStore.Downloads.DISPLAY_NAME)
+                val selection = MediaStore.Downloads.DISPLAY_NAME + "=?"
+                resolver.query(collection, projection, selection, arrayOf(fileName), null)?.use { c ->
+                    while (c.moveToNext()) {
+                        val id = c.getLong(0)
+                        val uri = ContentUris.withAppendedId(collection, id)
+                        publicUriCache[fileName] = uri
+                        return uri
+                    }
                 }
+            } catch (_: Exception) {
             }
-        } catch (_: Exception) {
         }
 
         val values = ContentValues().apply {
@@ -151,7 +175,9 @@ object HitStorage {
             put(MediaStore.Downloads.IS_PENDING, 0)
         }
         return try {
-            resolver.insert(collection, values)
+            val uri = resolver.insert(collection, values)
+            if (uri != null) publicUriCache[fileName] = uri
+            uri
         } catch (_: Exception) {
             null
         }
