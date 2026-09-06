@@ -3,5 +3,5 @@
   "min_version": "2.0.6-native",
   "force": false,
   "apk_url": "https://github.com/StartStatic1/AScan-AgenT-2.0-/releases/download/native-latest/AScan-Agent.apk",
-  "message": "2.0.7 — scan sequencial + update in-app. Toque em Atualizar."
+  "message": "2.0.7-native — build automatico #24. Toque em Atualizar no app."
 }
