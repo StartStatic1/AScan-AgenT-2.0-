@@ -11,8 +11,20 @@ android {
         applicationId = "com.ascan.ascanagent"
         minSdk = 24
         targetSdk = 34
-        versionCode = 204
-        versionName = "2.0.4-native"
+        versionCode = 205
+        versionName = "2.0.5-native"
+    }
+
+    signingConfigs {
+        create("fixed") {
+            val ks = file("../keystore/ascan-native.keystore")
+            if (ks.exists()) {
+                storeFile = ks
+                storePassword = "android"
+                keyAlias = "ascan"
+                keyPassword = "android"
+            }
+        }
     }
 
     buildTypes {
@@ -22,9 +34,17 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            val fixed = signingConfigs.findByName("fixed")
+            if (fixed != null && fixed.storeFile != null && fixed.storeFile!!.exists()) {
+                signingConfig = fixed
+            }
         }
         debug {
             isMinifyEnabled = false
+            val fixed = signingConfigs.findByName("fixed")
+            if (fixed != null && fixed.storeFile != null && fixed.storeFile!!.exists()) {
+                signingConfig = fixed
+            }
         }
     }
 

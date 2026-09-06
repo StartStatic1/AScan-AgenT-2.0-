@@ -28,6 +28,16 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Decode fixed keystore
+        run: |
+          mkdir -p keystore
+          if [ -f keystore/ascan-native.keystore.b64 ]; then
+            base64 -d keystore/ascan-native.keystore.b64 > keystore/ascan-native.keystore
+            ls -la keystore/
+          else
+            echo "WARN: keystore b64 missing"
+          fi
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
@@ -50,7 +60,7 @@ jobs:
           name: AScan Agent Native Build ${{ github.run_number }}
           files: android-native/app/build/outputs/apk/debug/*.apk
           body: |
-            ## AScan Agent Native (Kotlin)
-            UI Compose + multi-servidor + combo GitHub + proxy + PLAYER
+            ## AScan Agent Native 2.0.5
+            Hits mesmo arquivo, proxy 2000, direto primeiro, assinatura fixa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
