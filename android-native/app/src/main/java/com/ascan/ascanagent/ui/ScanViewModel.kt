@@ -57,7 +57,6 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
             viewModelScope.launch(Dispatchers.Main.immediate) { stats = s }
         }
         engine.onHit = { h ->
-            // UI na main; disco em IO — nunca derruba o worker
             viewModelScope.launch(Dispatchers.Main.immediate) {
                 try {
                     hits.add(0, h)
@@ -130,24 +129,26 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
             val urls = listOf(
                 "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=5000&country=all",
                 "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt",
-                "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt"
+                "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
+                "https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt",
+                "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/http.txt"
             )
             val found = mutableListOf<String>()
             withContext(Dispatchers.IO) {
                 for (u in urls) {
-                    val t = XtreamApi.fetchText(u, 12) ?: continue
+                    val t = XtreamApi.fetchText(u, 15) ?: continue
                     t.lineSequence().forEach { line ->
                         val p = line.trim()
-                        if (p.isNotEmpty() && ':' in p && !p.startsWith("#") && ' ' !in p) {
+                        if (p.isNotEmpty() && ':' in p && !p.startsWith("#") && ' ' !in p && p.length < 60) {
                             found += if ("://" in p) p else "http://$p"
                         }
                     }
-                    if (found.size >= 200) break
+                    if (found.size >= 1800) break
                 }
             }
-            proxies = found.distinct().take(400)
+            proxies = found.distinct().take(2000)
             proxyCount = proxies.size
-            log(if (proxyCount > 0) "Proxies: $proxyCount" else "Nenhum proxy")
+            log(if (proxyCount > 0) "OK Proxies online: $proxyCount" else "Nenhum proxy")
         }
     }
 
@@ -199,31 +200,6 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
         paused = false
         statusText = "Parado"
         log("Parado pelo usuario")
-    }
-
-    fun openPlayer() {
-        val url = lastM3u
-        if (url.isBlank()) {
-            log("Nenhum hit para abrir no player")
-            return
-        }
-        try {
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(Uri.parse(url), "application/x-mpegURL")
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            getApplication<Application>().startActivity(intent)
-            log("Abrindo player...")
-        } catch (_: Exception) {
-            try {
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                getApplication<Application>().startActivity(intent)
-            } catch (_: Exception) {
-                log("Sem player compativel")
-            }
-        }
     }
 
     fun hitsPath(): String = HitStorage.hitsDir(getApplication()).absolutePath
