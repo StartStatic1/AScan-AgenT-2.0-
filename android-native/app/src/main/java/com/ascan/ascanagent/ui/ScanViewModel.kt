@@ -53,20 +53,39 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
     var loadingCombo by mutableStateOf(false)
 
     init {
-        engine.onStats = { s -> stats = s }
-        engine.onHit = { h ->
-            hits.add(0, h)
-            if (hits.size > 200) hits.removeAt(hits.lastIndex)
-            lastM3u = h.m3u
-            HitStorage.save(getApplication(), h)
-            log("[HIT] (${h.server}) ${h.user}:${h.pass}")
+        engine.onStats = { s ->
+            viewModelScope.launch(Dispatchers.Main.immediate) { stats = s }
         }
-        engine.onLog = { msg -> log(msg) }
-        engine.onServerStatus = { ranking = it }
+        engine.onHit = { h ->
+            // UI na main; disco em IO — nunca derruba o worker
+            viewModelScope.launch(Dispatchers.Main.immediate) {
+                try {
+                    hits.add(0, h)
+                    if (hits.size > 200) hits.removeAt(hits.lastIndex)
+                    lastM3u = h.m3u
+                    log("[HIT] (${h.server}) ${h.user}:${h.pass}")
+                } catch (_: Exception) {
+                }
+            }
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    HitStorage.save(getApplication(), h)
+                } catch (_: Exception) {
+                }
+            }
+        }
+        engine.onLog = { msg ->
+            viewModelScope.launch(Dispatchers.Main.immediate) { log(msg) }
+        }
+        engine.onServerStatus = { list ->
+            viewModelScope.launch(Dispatchers.Main.immediate) { ranking = list }
+        }
         engine.onFinished = {
-            running = false
-            paused = false
-            statusText = "Parado"
+            viewModelScope.launch(Dispatchers.Main.immediate) {
+                running = false
+                paused = false
+                statusText = "Parado"
+            }
         }
         refreshCombos()
     }
