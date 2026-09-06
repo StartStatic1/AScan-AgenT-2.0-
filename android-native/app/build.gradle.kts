@@ -11,8 +11,8 @@ android {
         applicationId = "com.ascan.ascanagent"
         minSdk = 24
         targetSdk = 34
-        versionCode = 203
-        versionName = "2.0.3-native"
+        versionCode = 204
+        versionName = "2.0.4-native"
     }
 
     buildTypes {

@@ -121,7 +121,10 @@ class ScannerEngine {
                                 if (hit.unlimited) unlimited.incrementAndGet()
                                 serverHits[server]?.incrementAndGet()
                                 stateMutex.withLock { serverState[server] = "ON" }
-                                onHit?.invoke(hit)
+                                try {
+                                    onHit?.invoke(hit)
+                                } catch (_: Exception) {
+                                }
                             }
                             result.code == 403 || result.err.contains("403") -> {
                                 e403.incrementAndGet()
@@ -144,29 +147,32 @@ class ScannerEngine {
                         if (n % 5 == 0 || result.hit) {
                             val elapsed = ((System.currentTimeMillis() - startMs) / 1000).coerceAtLeast(1)
                             val cpm = ((checks.get() * 60.0) / elapsed).toInt()
-                            onStats?.invoke(
-                                ScanStats(
-                                    checks = checks.get(),
-                                    hits = hits.get(),
-                                    unlimited = unlimited.get(),
-                                    errors403 = e403.get(),
-                                    errors429 = e429.get(),
-                                    timeouts = timeouts.get(),
-                                    cpm = cpm,
-                                    progress = checks.get().toFloat() / total,
-                                    elapsedSec = elapsed,
-                                    totalCombo = combo.size,
-                                    proxies = proxies.size
+                            try {
+                                onStats?.invoke(
+                                    ScanStats(
+                                        checks = checks.get(),
+                                        hits = hits.get(),
+                                        unlimited = unlimited.get(),
+                                        errors403 = e403.get(),
+                                        errors429 = e429.get(),
+                                        timeouts = timeouts.get(),
+                                        cpm = cpm,
+                                        progress = checks.get().toFloat() / total,
+                                        elapsedSec = elapsed,
+                                        totalCombo = combo.size,
+                                        proxies = proxies.size
+                                    )
                                 )
-                            )
-                            val ranking = serverHits.keys.map { h ->
-                                ServerStatus(
-                                    host = h,
-                                    state = serverState[h] ?: "...",
-                                    hits = serverHits[h]?.get() ?: 0
-                                )
-                            }.sortedByDescending { it.hits }
-                            onServerStatus?.invoke(ranking)
+                                val ranking = serverHits.keys.map { h ->
+                                    ServerStatus(
+                                        host = h,
+                                        state = serverState[h] ?: "...",
+                                        hits = serverHits[h]?.get() ?: 0
+                                    )
+                                }.sortedByDescending { it.hits }
+                                onServerStatus?.invoke(ranking)
+                            } catch (_: Exception) {
+                            }
                         }
                     }
                 }
@@ -174,23 +180,26 @@ class ScannerEngine {
             workers.forEach { it.join() }
             stopped.set(true)
             val elapsed = ((System.currentTimeMillis() - startMs) / 1000).coerceAtLeast(1)
-            onStats?.invoke(
-                ScanStats(
-                    checks = checks.get(),
-                    hits = hits.get(),
-                    unlimited = unlimited.get(),
-                    errors403 = e403.get(),
-                    errors429 = e429.get(),
-                    timeouts = timeouts.get(),
-                    cpm = ((checks.get() * 60.0) / elapsed).toInt(),
-                    progress = 1f,
-                    elapsedSec = elapsed,
-                    totalCombo = combo.size,
-                    proxies = proxies.size
+            try {
+                onStats?.invoke(
+                    ScanStats(
+                        checks = checks.get(),
+                        hits = hits.get(),
+                        unlimited = unlimited.get(),
+                        errors403 = e403.get(),
+                        errors429 = e429.get(),
+                        timeouts = timeouts.get(),
+                        cpm = ((checks.get() * 60.0) / elapsed).toInt(),
+                        progress = 1f,
+                        elapsedSec = elapsed,
+                        totalCombo = combo.size,
+                        proxies = proxies.size
+                    )
                 )
-            )
-            onLog?.invoke("Fim | Hits ${hits.get()} | Checks ${checks.get()}")
-            onFinished?.invoke()
+                onLog?.invoke("Fim | Hits ${hits.get()} | Checks ${checks.get()}")
+                onFinished?.invoke()
+            } catch (_: Exception) {
+            }
             scope.cancel()
             pool.shutdownNow()
         }
