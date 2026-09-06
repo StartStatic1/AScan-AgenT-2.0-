@@ -1,7 +1,7 @@
 {
-  "version": "2.0.3",
-  "min_version": "2.0.3",
+  "version": "2.0.7-native",
+  "min_version": "2.0.6-native",
   "force": false,
-  "apk_url": "https://github.com/StartStatic1/AScan-AgenT-2.0-/releases/latest",
-  "message": "AScan Agent 2.0.3 — assinatura fixa, hits limpos."
+  "apk_url": "https://github.com/StartStatic1/AScan-AgenT-2.0-/actions",
+  "message": "2.0.7 — scan sequencial automatico (servidor 1→2→3) + update remoto."
 }

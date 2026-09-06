@@ -48,8 +48,17 @@ enum class AtkMode(val label: String, val timeoutSec: Long, val delayMs: Long, v
     BYPASS("Bypass", 6, 120, 2)
 }
 
+data class RemoteVersion(
+    val version: String,
+    val minVersion: String,
+    val force: Boolean,
+    val apkUrl: String,
+    val message: String
+)
+
 object AppConfig {
-    const val VERSION = "2.0.6-native"
+    const val VERSION = "2.0.7-native"
+    const val VERSION_CODE = 207
     const val TELEGRAM = "https://t.me/+UfgoBcTQpwBlMDMx"
     const val REPO_OWNER = "StartStatic1"
     const val REPO_NAME = "AScan-AgenT-2.0-"
