@@ -12,9 +12,9 @@ import java.util.Locale
 
 /**
  * Salva hits de forma segura.
- * 1) Sempre grava na pasta do app (sempre tem permissão).
- * 2) Tenta espelhar no Download público (pode falhar no Android 10+ — ignoramos).
- * Nunca lança exception para não derrubar o scan.
+ * 1) Sempre grava na pasta do app (sempre tem permissao).
+ * 2) Tenta espelhar no Download publico (pode falhar no Android 10+ — ignoramos).
+ * Nunca lanca exception para nao derrubar o scan.
  */
 object HitStorage {
 
@@ -24,7 +24,6 @@ object HitStorage {
     fun hitsDir(context: Context): File {
         resolvedDir?.let { if (it.exists() || it.mkdirs()) return it }
 
-        // Preferência: pasta privada do app (sempre funciona, sem permissão especial)
         val safe = listOfNotNull(
             context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)?.let { File(it, "AScan_App/HITS") },
             context.getExternalFilesDir(null)?.let { File(it, "AScan_App/HITS") },
@@ -43,7 +42,6 @@ object HitStorage {
             }
         }
 
-        // Último recurso: filesDir
         val fallback = File(context.filesDir, "HITS")
         try { fallback.mkdirs() } catch (_: Exception) {}
         resolvedDir = fallback
@@ -53,8 +51,9 @@ object HitStorage {
     fun save(context: Context, hit: Hit) {
         try {
             val dir = hitsDir(context)
-            val host = hit.server.substringBefore(":").replace(".", "_")
-                .replace(Regex("[^A-Za-z0-9_\-]"), "_")
+            val host = hit.server.substringBefore(":")
+                .replace(".", "_")
+                .replace(Regex("[^A-Za-z0-9_-]"), "_")
             val day = SimpleDateFormat("dd-MM", Locale.getDefault()).format(Date())
             val stamp = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault()).format(Date())
             val block = "[$stamp]\n${hit.text}\n\n"
@@ -67,10 +66,8 @@ object HitStorage {
                 }
             }
 
-            // Espelho opcional no Download público (não crítico)
             tryMirrorPublic(context, "${day}_$host.txt", block)
         } catch (_: Exception) {
-            // Nunca derruba o worker
         }
     }
 
@@ -93,7 +90,7 @@ object HitStorage {
                 }
                 val resolver = context.contentResolver
                 val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return
-                resolver.openOutputStream(uri, "wa")?.use { out ->
+                resolver.openOutputStream(uri)?.use { out ->
                     out.write(block.toByteArray(Charsets.UTF_8))
                 }
                 values.clear()
