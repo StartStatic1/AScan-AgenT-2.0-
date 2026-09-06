@@ -214,17 +214,26 @@ fun HomeScreen(vm: ScanViewModel) {
                     Text("PROXY", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        if (vm.proxyCount > 0) "online · ${vm.proxyCount} proxies" else "Sem proxy (direto)",
-                        color = if (vm.proxyCount > 0) Green else Muted,
+                        when {
+                            vm.proxyLoading -> "Baixando proxies..."
+                            vm.proxyCount > 0 -> "Pronto · ${vm.proxyCount} proxies"
+                            else -> "Sem proxy (direto)"
+                        },
+                        color = when {
+                            vm.proxyLoading -> Orange
+                            vm.proxyCount > 0 -> Green
+                            else -> Muted
+                        },
                         fontSize = 13.sp
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
                             onClick = { vm.loadProxiesOnline() },
+                            enabled = !vm.proxyLoading,
                             colors = ButtonDefaults.buttonColors(containerColor = Blue),
                             modifier = Modifier.weight(1f)
-                        ) { Text("Online") }
+                        ) { Text(if (vm.proxyLoading) "..." else "Online") }
                         Button(
                             onClick = { vm.clearProxies() },
                             colors = ButtonDefaults.buttonColors(containerColor = Red),
@@ -328,7 +337,12 @@ fun HomeScreen(vm: ScanViewModel) {
                     lines.forEach { line ->
                         Text(
                             line,
-                            color = if (line.startsWith("[HIT]")) Green else Muted,
+                            color = when {
+                                line.startsWith("[HIT]") -> Green
+                                line.startsWith("Salvo:") -> Blue
+                                line.startsWith("OK Proxies") -> Green
+                                else -> Muted
+                            },
                             fontSize = 12.sp,
                             fontFamily = FontFamily.Monospace,
                             modifier = Modifier.padding(vertical = 1.dp)
