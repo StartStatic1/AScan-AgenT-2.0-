@@ -55,6 +55,8 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
     var loadingCombo by mutableStateOf(false)
     var updateInfo by mutableStateOf<RemoteVersion?>(null)
     var showUpdate by mutableStateOf(false)
+    var downloadProgress by mutableStateOf(-1)
+    var downloadError by mutableStateOf("")
 
     init {
         engine.onStats = { s ->
@@ -114,6 +116,39 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
 
     fun dismissUpdate() {
         showUpdate = false
+        downloadProgress = -1
+        downloadError = ""
+    }
+
+    fun applyUpdate() {
+        val info = updateInfo ?: return
+        if (info.apkUrl.isBlank()) {
+            downloadError = "URL vazia"
+            return
+        }
+        viewModelScope.launch {
+            downloadProgress = 0
+            downloadError = ""
+            val err = withContext(Dispatchers.IO) {
+                UpdateChecker.downloadAndInstall(
+                    getApplication(),
+                    info.apkUrl
+                ) { p ->
+                    viewModelScope.launch(Dispatchers.Main.immediate) {
+                        downloadProgress = p
+                    }
+                }
+            }
+            if (err != null) {
+                downloadProgress = -2
+                downloadError = err
+                log("Update falhou: $err")
+            } else {
+                downloadProgress = 100
+                log("APK baixado — confirme a instalação")
+                showUpdate = false
+            }
+        }
     }
 
     fun log(msg: String) {
