@@ -89,25 +89,28 @@ class ScannerEngine {
 
                         if (mode.delayMs > 0) delay(mode.delayMs)
 
-                        val proxy = if (proxies.isNotEmpty()) {
-                            val i = proxyIdx.getAndIncrement()
-                            proxies[i % proxies.size]
-                        } else null
-
+                        // Estrategia velocidade:
+                        // 1) tenta DIRETO primeiro (rapido)
+                        // 2) se 403/429 e tem proxy, tenta COM proxy
+                        // 3) se escolheu proxy e timeout, fallback direto
                         var result = XtreamApi.check(
                             server, cred.user, cred.pass,
                             timeoutSec = mode.timeoutSec,
-                            proxyUrl = proxy
+                            proxyUrl = null
                         )
-                        if (proxy != null && result.err in listOf(
-                                "Timeout", "ConnectTimeout", "ProxyError",
-                                "ConnectionError", "UnknownHostException"
+
+                        if (proxies.isNotEmpty() && (
+                                result.code == 403 || result.code == 429 ||
+                                result.err.contains("403") || result.err.contains("429")
                             )
                         ) {
+                            val i = proxyIdx.getAndIncrement()
+                            val proxy = proxies[i % proxies.size]
+                            val pxTimeout = mode.timeoutSec.coerceAtMost(4)
                             result = XtreamApi.check(
                                 server, cred.user, cred.pass,
-                                timeoutSec = mode.timeoutSec,
-                                proxyUrl = null
+                                timeoutSec = pxTimeout,
+                                proxyUrl = proxy
                             )
                         }
 
@@ -128,18 +131,29 @@ class ScannerEngine {
                             }
                             result.code == 403 || result.err.contains("403") -> {
                                 e403.incrementAndGet()
-                                stateMutex.withLock { serverState[server] = "PROT" }
+                                stateMutex.withLock {
+                                    // so marca PROT se ainda nao teve hit
+                                    if ((serverHits[server]?.get() ?: 0) == 0) {
+                                        serverState[server] = "PROT"
+                                    }
+                                }
                             }
                             result.code == 429 || result.err.contains("429") -> {
                                 e429.incrementAndGet()
-                                stateMutex.withLock { serverState[server] = "PROT" }
+                                stateMutex.withLock {
+                                    if ((serverHits[server]?.get() ?: 0) == 0) {
+                                        serverState[server] = "PROT"
+                                    }
+                                }
                             }
                             result.err.contains("Timeout", true) || result.code == 0 -> {
                                 timeouts.incrementAndGet()
                             }
                             result.code == 200 -> {
                                 stateMutex.withLock {
-                                    if (serverState[server] != "PROT") serverState[server] = "ON"
+                                    if (serverState[server] != "PROT" || (serverHits[server]?.get() ?: 0) > 0) {
+                                        serverState[server] = "ON"
+                                    }
                                 }
                             }
                         }
@@ -164,11 +178,9 @@ class ScannerEngine {
                                     )
                                 )
                                 val ranking = serverHits.keys.map { h ->
-                                    ServerStatus(
-                                        host = h,
-                                        state = serverState[h] ?: "...",
-                                        hits = serverHits[h]?.get() ?: 0
-                                    )
+                                    val hc = serverHits[h]?.get() ?: 0
+                                    val st = if (hc > 0) "ON" else (serverState[h] ?: "...")
+                                    ServerStatus(host = h, state = st, hits = hc)
                                 }.sortedByDescending { it.hits }
                                 onServerStatus?.invoke(ranking)
                             } catch (_: Exception) {

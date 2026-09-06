@@ -1,20 +1,15 @@
 package com.ascan.ascanagent.data
 
-import android.content.ContentValues
 import android.content.Context
-import android.os.Build
 import android.os.Environment
-import android.provider.MediaStore
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 /**
- * Salva hits de forma segura.
- * 1) Sempre grava na pasta do app (sempre tem permissao).
- * 2) Tenta espelhar no Download publico (pode falhar no Android 10+ — ignoramos).
- * Nunca lanca exception para nao derrubar o scan.
+ * Salva hits apenas na pasta do app (append no MESMO arquivo por servidor/dia).
+ * Nunca cria arquivo novo por hit. Nunca lanca exception.
  */
 object HitStorage {
 
@@ -51,9 +46,11 @@ object HitStorage {
     fun save(context: Context, hit: Hit) {
         try {
             val dir = hitsDir(context)
+            // host normalizado SEMPRE igual para o mesmo servidor
             val host = hit.server.substringBefore(":")
+                .lowercase()
                 .replace(".", "_")
-                .replace(Regex("[^A-Za-z0-9_-]"), "_")
+                .replace(Regex("[^a-z0-9_]"), "_")
             val day = SimpleDateFormat("dd-MM", Locale.getDefault()).format(Date())
             val stamp = SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault()).format(Date())
             val block = "[$stamp]\n${hit.text}\n\n"
@@ -65,8 +62,6 @@ object HitStorage {
                     appendSafe(File(dir, "ILIMITADOS.txt"), block)
                 }
             }
-
-            tryMirrorPublic(context, "${day}_$host.txt", block)
         } catch (_: Exception) {
         }
     }
@@ -75,35 +70,6 @@ object HitStorage {
         try {
             file.parentFile?.mkdirs()
             file.appendText(block)
-        } catch (_: Exception) {
-        }
-    }
-
-    private fun tryMirrorPublic(context: Context, fileName: String, block: String) {
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val values = ContentValues().apply {
-                    put(MediaStore.Downloads.DISPLAY_NAME, fileName)
-                    put(MediaStore.Downloads.MIME_TYPE, "text/plain")
-                    put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/AScan_App/HITS")
-                    put(MediaStore.Downloads.IS_PENDING, 1)
-                }
-                val resolver = context.contentResolver
-                val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return
-                resolver.openOutputStream(uri)?.use { out ->
-                    out.write(block.toByteArray(Charsets.UTF_8))
-                }
-                values.clear()
-                values.put(MediaStore.Downloads.IS_PENDING, 0)
-                resolver.update(uri, values, null, null)
-            } else {
-                val pub = File(
-                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-                    "AScan_App/HITS"
-                )
-                if (!pub.exists()) pub.mkdirs()
-                appendSafe(File(pub, fileName), block)
-            }
         } catch (_: Exception) {
         }
     }
