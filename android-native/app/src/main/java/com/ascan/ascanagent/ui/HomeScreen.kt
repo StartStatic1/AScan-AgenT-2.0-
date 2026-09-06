@@ -256,11 +256,18 @@ fun HomeScreen(vm: ScanViewModel) {
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     ActionBtn("PAUSAR", Orange, Modifier.weight(1f)) { vm.togglePause() }
-                    ActionBtn("PLAYER", Blue, Modifier.weight(1f)) { vm.openPlayer() }
-                    ActionBtn("COPIAR", Card2, Modifier.weight(1f)) {
+                    ActionBtn("COPIAR", Blue, Modifier.weight(1f)) {
                         val t = vm.hits.joinToString("\n") { "${it.user}:${it.pass}" }
                         clipboard.setText(AnnotatedString(t))
                         vm.log("Hits copiados")
+                    }
+                    ActionBtn("M3U", Card2, Modifier.weight(1f)) {
+                        if (vm.lastM3u.isNotBlank()) {
+                            clipboard.setText(AnnotatedString(vm.lastM3u))
+                            vm.log("M3U copiado")
+                        } else {
+                            vm.log("Nenhum hit ainda")
+                        }
                     }
                 }
             }
