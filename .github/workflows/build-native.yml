@@ -44,23 +44,63 @@ jobs:
       - name: Build debug APK
         run: gradle assembleDebug --no-daemon
 
+      - name: Prepare APK
+        id: apk
+        run: |
+          SRC=$(ls app/build/outputs/apk/debug/*.apk | head -1)
+          mkdir -p /tmp/release
+          cp "$SRC" /tmp/release/AScan-Agent.apk
+          VER=$(grep -E 'versionName\s*=' app/build.gradle.kts | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+          CODE=$(grep -E 'versionCode\s*=' app/build.gradle.kts | head -1 | sed -E 's/[^0-9]//g')
+          echo "version=$VER" >> $GITHUB_OUTPUT
+          echo "code=$CODE" >> $GITHUB_OUTPUT
+          echo "APK=$SRC version=$VER code=$CODE"
+          ls -lh /tmp/release/AScan-Agent.apk
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: AScan-Agent-Native-APK
-          path: android-native/app/build/outputs/apk/debug/*.apk
+          path: /tmp/release/AScan-Agent.apk
           if-no-files-found: error
 
-      - name: Release APK
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        continue-on-error: true
+      # Release fixo: tag native-latest sempre atualizada (link estavel pro app)
+      - name: Publish native-latest release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: native-${{ github.run_number }}
-          name: AScan Agent Native Build ${{ github.run_number }}
-          files: android-native/app/build/outputs/apk/debug/*.apk
+          tag_name: native-latest
+          name: AScan Agent Latest (${{ steps.apk.outputs.version }})
+          files: /tmp/release/AScan-Agent.apk
+          make_latest: true
           body: |
-            ## AScan Agent Native 2.0.5
-            Hits mesmo arquivo, proxy 2000, direto primeiro, assinatura fixa
+            ## AScan Agent ${{ steps.apk.outputs.version }}
+            Build #${{ github.run_number }}
+
+            **Download direto (usado pelo update in-app):**
+            https://github.com/StartStatic1/AScan-AgenT-2.0-/releases/download/native-latest/AScan-Agent.apk
+
+            - Assinatura fixa (instala por cima)
+            - Scan sequencial 1→2→3
+            - Hits em Download/AScan_App/HITS
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Atualiza version.json na raiz (nao re-dispara este workflow)
+      - name: Update version.json
+        working-directory: .
+        run: |
+          VER="${{ steps.apk.outputs.version }}"
+          cat > version.json << EOF
+          {
+            "version": "$VER",
+            "min_version": "2.0.6-native",
+            "force": false,
+            "apk_url": "https://github.com/StartStatic1/AScan-AgenT-2.0-/releases/download/native-latest/AScan-Agent.apk",
+            "message": "$VER — build automatico #${{ github.run_number }}. Toque em Atualizar no app."
+          }
+          EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add version.json
+          git diff --staged --quiet || git commit -m "chore: version.json → $VER (build ${{ github.run_number }})"
+          git push origin HEAD:main
