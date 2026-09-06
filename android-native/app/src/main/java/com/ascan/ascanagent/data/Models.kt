@@ -49,7 +49,7 @@ enum class AtkMode(val label: String, val timeoutSec: Long, val delayMs: Long, v
 }
 
 object AppConfig {
-    const val VERSION = "2.0.3-native"
+    const val VERSION = "2.0.4-native"
     const val TELEGRAM = "https://t.me/+UfgoBcTQpwBlMDMx"
     const val REPO_OWNER = "StartStatic1"
     const val REPO_NAME = "AScan-AgenT-2.0-"
