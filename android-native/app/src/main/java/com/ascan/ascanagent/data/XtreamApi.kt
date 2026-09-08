@@ -6,21 +6,56 @@ import org.json.JSONObject
 import java.security.SecureRandom
 import java.security.cert.X509Certificate
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
 
 object XtreamApi {
 
+    /** Agentes do Python + players IPTV reais (reduz 403 em varios painels) */
     private val uas = listOf(
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        // Players IPTV (prioridade — parecem clientes reais)
+        "TiviMate/4.7.0 (Android 11; NVIDIA SHIELD TV Pro)",
         "TiviMate/5.1.0 (Android 13)",
+        "TiviMate/5.0.2 (Linux; Android 12)",
+        "IPTVSmartersPro/3.1.5 (Linux; Android 9) ExoPlayerLib/2.11.8",
         "IPTV Smarters Pro",
-        "VLC/3.0.20 LibVLC/3.0.20",
-        "okhttp/4.12.0",
+        "IPTV Smarters Player",
         "OTT Navigator/1.7.2.2",
-        "Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36"
+        "OTT Navigator/1.6.9.4 (Android)",
+        "VLC/3.0.18 LibVLC/3.0.18",
+        "VLC/3.0.20 LibVLC/3.0.20",
+        "GSE SMART IPTV/7.7",
+        "XCIPTV/1.0",
+        "IBO Player",
+        "Duplex IPTV",
+        "SS IPTV",
+        "okhttp/4.12.0",
+        "okhttp/5.2.0",
+        // Desktop / mobile browsers
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:132.0) Gecko/20100101 Firefox/132.0",
+        "Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36",
+        "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36",
+        "Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36",
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1",
+        // Smart TV / console
+        "Mozilla/5.0 (Web0S; Linux/SmartTV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.79 Safari/537.36 WebAppManager",
+        "Mozilla/5.0 (PlayStation 5; 6.50) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15",
+        "Mozilla/5.0 (Linux; Android 11; BRAVIA 4K UR3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.88 Safari/537.36"
     )
+
+    private val uaIdx = AtomicInteger(0)
+
+    fun nextUa(): String {
+        val i = uaIdx.getAndIncrement()
+        return uas[Math.floorMod(i, uas.size)]
+    }
 
     private val trustAll = object : X509TrustManager {
         override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
@@ -67,12 +102,26 @@ object XtreamApi {
         val url =
             "http://$host/player_api.php?username=${enc(user)}&password=${enc(pass)}"
         val c = buildClient(timeoutSec, proxyUrl)
+
+        // 1ª tentativa
+        var result = doRequest(c, url, nextUa())
+
+        // 403/429 → troca UA e tenta de novo (sem mudar proxy aqui)
+        if (!result.hit && result.code in listOf(403, 429, 401)) {
+            result = doRequest(c, url, nextUa())
+        }
+        return result
+    }
+
+    private fun doRequest(c: OkHttpClient, url: String, ua: String): CheckResult {
         return try {
             val req = Request.Builder()
                 .url(url)
-                .header("User-Agent", uas.random())
-                .header("Accept", "*/*")
+                .header("User-Agent", ua)
+                .header("Accept", "application/json, text/plain, */*")
+                .header("Accept-Language", "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7")
                 .header("Connection", "keep-alive")
+                .header("Cache-Control", "no-cache")
                 .get()
                 .build()
             c.newCall(req).execute().use { resp ->
@@ -163,18 +212,18 @@ object XtreamApi {
             appendLine("📅 Criado : $createdS")
             appendLine("⏰ Expira : $expS$daysLeft")
             appendLine("────────────────────")
-            appendLine("🎬 M3U:")
+            appendLine("📺 M3U:")
             appendLine(m3u)
-            appendLine("📺 EPG:")
+            appendLine("🗓 EPG:")
             appendLine(epg)
             appendLine("────────────────────")
-            appendLine("📂 Combo  : $comboShow")
-            appendLine("✉️ Telegram: ${AppConfig.TELEGRAM}")
-            appendLine("━━━━━━━━━━━━━━━━━━━━")
+            appendLine("📁 Combo  : $comboShow")
+            appendLine("✈️ Telegram: ${AppConfig.TELEGRAM}")
+            appendLine("────────────────────")
             appendLine("AScan Agent ${AppConfig.VERSION}")
         }
         return Hit(
-            server = host,
+            server = "$hostOnly:$port",
             user = user,
             pass = pass,
             status = status,
@@ -211,7 +260,8 @@ object XtreamApi {
             .readTimeout(timeoutSec, TimeUnit.SECONDS)
         if (!proxyUrl.isNullOrBlank()) {
             try {
-                val u = java.net.URI(proxyUrl)
+                val raw = proxyUrl.trim()
+                val u = if ("://" in raw) java.net.URI(raw) else java.net.URI("http://$raw")
                 val host = u.host ?: return b.build()
                 val port = if (u.port > 0) u.port else 80
                 b.proxy(java.net.Proxy(java.net.Proxy.Type.HTTP, java.net.InetSocketAddress(host, port)))
@@ -223,7 +273,7 @@ object XtreamApi {
 
     fun fetchText(url: String, timeoutSec: Long = 20): String? {
         return try {
-            val req = Request.Builder().url(url).header("User-Agent", "AScanAgent/2.0").get().build()
+            val req = Request.Builder().url(url).header("User-Agent", "AScanAgent/${AppConfig.VERSION}").get().build()
             client.newBuilder()
                 .connectTimeout(timeoutSec, TimeUnit.SECONDS)
                 .readTimeout(timeoutSec, TimeUnit.SECONDS)

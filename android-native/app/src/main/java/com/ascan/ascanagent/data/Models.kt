@@ -57,8 +57,8 @@ data class RemoteVersion(
 )
 
 object AppConfig {
-    const val VERSION = "2.0.9-native"
-    const val VERSION_CODE = 209
+    const val VERSION = "2.0.10-native"
+    const val VERSION_CODE = 210
     const val TELEGRAM = "https://t.me/+UfgoBcTQpwBlMDMx"
     const val REPO_OWNER = "StartStatic1"
     const val REPO_NAME = "AScan-AgenT-2.0-"
