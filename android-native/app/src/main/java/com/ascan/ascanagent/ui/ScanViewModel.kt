@@ -1,1 +1,335 @@
-PLACEHOLDER
+package com.ascan.ascanagent.ui
+
+import android.app.Application
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.ascan.ascanagent.data.AppConfig
+import com.ascan.ascanagent.data.AtkMode
+import com.ascan.ascanagent.data.Credential
+import com.ascan.ascanagent.data.Hit
+import com.ascan.ascanagent.data.HitStorage
+import com.ascan.ascanagent.data.RemoteVersion
+import com.ascan.ascanagent.data.ScanStats
+import com.ascan.ascanagent.data.ScannerEngine
+import com.ascan.ascanagent.data.ServerStatus
+import com.ascan.ascanagent.data.UpdateChecker
+import com.ascan.ascanagent.data.XtreamApi
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+class ScanViewModel(app: Application) : AndroidViewModel(app) {
+
+    private val engine = ScannerEngine()
+
+    var server1 by mutableStateOf("")
+    var server2 by mutableStateOf("")
+    var server3 by mutableStateOf("")
+    var server4 by mutableStateOf("")
+    var server5 by mutableStateOf("")
+
+    var threads by mutableStateOf("20")
+    var mode by mutableStateOf(AtkMode.ADAPTATIVO)
+    var comboName by mutableStateOf("")
+    var comboCount by mutableStateOf(0)
+    var comboItems: List<Credential> by mutableStateOf(emptyList())
+    var comboList by mutableStateOf<List<Pair<String, String>>>(emptyList())
+    var selectedCombo by mutableStateOf("")
+
+    var proxyCount by mutableStateOf(0)
+    var proxyLoading by mutableStateOf(false)
+    private var proxies: List<String> = emptyList()
+
+    var running by mutableStateOf(false)
+    var paused by mutableStateOf(false)
+    var stats by mutableStateOf(ScanStats())
+    var ranking by mutableStateOf<List<ServerStatus>>(emptyList())
+    var hits = mutableStateListOf<Hit>()
+    var logs = mutableStateListOf<String>()
+    var statusText by mutableStateOf("Pronto")
+    var lastM3u by mutableStateOf("")
+    var loadingCombo by mutableStateOf(false)
+    var updateInfo by mutableStateOf<RemoteVersion?>(null)
+    var showUpdate by mutableStateOf(false)
+    var downloadProgress by mutableStateOf(-1)
+    var downloadError by mutableStateOf("")
+
+    var showProxyPaste by mutableStateOf(false)
+    var proxyPasteText by mutableStateOf("")
+
+    init {
+        engine.onStats = { s ->
+            viewModelScope.launch(Dispatchers.Main.immediate) { stats = s }
+        }
+        engine.onHit = { h ->
+            viewModelScope.launch(Dispatchers.Main.immediate) {
+                try {
+                    hits.add(0, h)
+                    if (hits.size > 200) hits.removeAt(hits.lastIndex)
+                    lastM3u = h.m3u
+                    log("[HIT] (${h.server}) ${h.user}:${h.pass}")
+                } catch (_: Exception) {
+                }
+            }
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    val path = HitStorage.save(getApplication(), h)
+                    viewModelScope.launch(Dispatchers.Main.immediate) {
+                        if (path.isNotBlank()) {
+                            log("Salvo: ${path.substringAfterLast('/')}")
+                        } else {
+                            log("Hit OK (pasta app)")
+                        }
+                    }
+                } catch (_: Exception) {
+                }
+            }
+        }
+        engine.onLog = { msg ->
+            viewModelScope.launch(Dispatchers.Main.immediate) { log(msg) }
+        }
+        engine.onServerStatus = { list ->
+            viewModelScope.launch(Dispatchers.Main.immediate) { ranking = list }
+        }
+        engine.onFinished = {
+            viewModelScope.launch(Dispatchers.Main.immediate) {
+                running = false
+                paused = false
+                statusText = "Parado"
+            }
+        }
+        refreshCombos()
+        checkUpdate()
+    }
+
+    fun checkUpdate() {
+        viewModelScope.launch {
+            val remote = withContext(Dispatchers.IO) { UpdateChecker.fetch() } ?: return@launch
+            if (UpdateChecker.isNewer(remote.version)) {
+                updateInfo = remote
+                showUpdate = true
+                log("Update: ${remote.version} — ${remote.message}")
+            }
+        }
+    }
+
+    fun dismissUpdate() {
+        showUpdate = false
+        downloadProgress = -1
+        downloadError = ""
+    }
+
+    fun applyUpdate() {
+        val info = updateInfo ?: return
+        if (info.apkUrl.isBlank()) {
+            downloadError = "URL vazia"
+            return
+        }
+        viewModelScope.launch {
+            downloadProgress = 0
+            downloadError = ""
+            val err = withContext(Dispatchers.IO) {
+                UpdateChecker.downloadAndInstall(
+                    getApplication(),
+                    info.apkUrl
+                ) { p ->
+                    viewModelScope.launch(Dispatchers.Main.immediate) {
+                        downloadProgress = p
+                    }
+                }
+            }
+            if (err != null) {
+                downloadProgress = -2
+                downloadError = err
+                log("Update falhou: $err")
+            } else {
+                downloadProgress = 100
+                log("APK baixado — confirme a instalação")
+                showUpdate = false
+            }
+        }
+    }
+
+    fun log(msg: String) {
+        logs.add(0, msg)
+        if (logs.size > 80) logs.removeAt(logs.lastIndex)
+    }
+
+    fun refreshCombos() {
+        viewModelScope.launch {
+            loadingCombo = true
+            val list = withContext(Dispatchers.IO) { XtreamApi.listGithubCombos() }
+            comboList = list
+            if (selectedCombo.isEmpty() && list.isNotEmpty()) {
+                selectedCombo = list.first().first
+            }
+            loadingCombo = false
+        }
+    }
+
+    fun loadSelectedCombo() {
+        val item = comboList.find { it.first == selectedCombo } ?: return
+        viewModelScope.launch {
+            loadingCombo = true
+            val text = withContext(Dispatchers.IO) { XtreamApi.fetchText(item.second) }
+            if (text != null) {
+                comboItems = XtreamApi.parseCombo(text)
+                comboName = item.first
+                comboCount = comboItems.size
+                log("Combo: $comboName — $comboCount credenciais")
+            } else {
+                log("Falha ao baixar combo")
+            }
+            loadingCombo = false
+        }
+    }
+
+    fun loadProxiesOnline() {
+        if (proxyLoading) return
+        viewModelScope.launch {
+            proxyLoading = true
+            log("Baixando proxies...")
+            val urls = listOf(
+                "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=3000&country=all&ssl=all&anonymity=all",
+                "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=5000&country=BR,US,DE,NL,FR",
+                "https://raw.githubusercontent.com/mmpx12/proxy-list/master/http.txt",
+                "https://raw.githubusercontent.com/jetkai/proxy-list/main/online-proxies/txt/proxies-http.txt",
+                "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
+                "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt",
+                "https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt",
+                "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/http.txt",
+                "https://raw.githubusercontent.com/roosterkid/openproxylist/main/HTTPS_RAW.txt",
+                "https://raw.githubusercontent.com/proxifly/free-proxy-list/main/proxies/protocols/http/data.txt"
+            )
+            val found = mutableListOf<String>()
+            withContext(Dispatchers.IO) {
+                for (u in urls) {
+                    val t = XtreamApi.fetchText(u, 15) ?: continue
+                    t.lineSequence().forEach { line ->
+                        val p = line.trim()
+                        if (p.isNotEmpty() && ':' in p && !p.startsWith("#") && ' ' !in p && p.length < 60) {
+                            found += if ("://" in p) p else "http://$p"
+                        }
+                    }
+                    if (found.size >= 1800) break
+                }
+            }
+            proxies = found.distinct().take(2000)
+            proxyCount = proxies.size
+            proxyLoading = false
+            log(if (proxyCount > 0) "OK Proxies prontos: $proxyCount" else "Nenhum proxy")
+        }
+    }
+
+    fun clearProxies() {
+        proxies = emptyList()
+        proxyCount = 0
+        proxyLoading = false
+        log("Proxies limpos (direto)")
+    }
+
+    /** Offline: cola lista ip:porta (gerador / txt local) */
+    fun applyProxyPaste(text: String) {
+        val found = mutableListOf<String>()
+        text.lineSequence().forEach { line ->
+            val p = line.trim()
+            if (p.isEmpty() || p.startsWith("#")) return@forEach
+            if (':' in p && ' ' !in p && p.length < 80) {
+                found += if ("://" in p) p else "http://$p"
+            }
+        }
+        proxies = found.distinct().take(5000)
+        proxyCount = proxies.size
+        showProxyPaste = false
+        proxyPasteText = ""
+        log(if (proxyCount > 0) "Offline · $proxyCount proxies" else "Nenhum proxy válido no texto")
+    }
+
+    /** Offline: baixa .txt da pasta proxies/ no GitHub */
+    fun loadProxiesFromRepo() {
+        if (proxyLoading) return
+        viewModelScope.launch {
+            proxyLoading = true
+            log("Carregando proxies do repositório...")
+            val found = mutableListOf<String>()
+            withContext(Dispatchers.IO) {
+                val body = XtreamApi.fetchText(AppConfig.PROXIES_API, 20) ?: return@withContext
+                try {
+                    val arr = org.json.JSONArray(body)
+                    for (i in 0 until arr.length()) {
+                        val o = arr.getJSONObject(i)
+                        val name = o.optString("name")
+                        val dl = o.optString("download_url")
+                        if (!name.endsWith(".txt", true)) continue
+                        val t = XtreamApi.fetchText(dl, 20) ?: continue
+                        t.lineSequence().forEach { line ->
+                            val p = line.trim()
+                            if (p.isNotEmpty() && ':' in p && !p.startsWith("#") && ' ' !in p && p.length < 80) {
+                                found += if ("://" in p) p else "http://$p"
+                            }
+                        }
+                    }
+                } catch (_: Exception) {
+                }
+            }
+            proxies = found.distinct().take(5000)
+            proxyCount = proxies.size
+            proxyLoading = false
+            log(if (proxyCount > 0) "Repo · $proxyCount proxies" else "Nenhum .txt em /proxies")
+        }
+    }
+
+    fun start() {
+        val servers = listOf(server1, server2, server3, server4, server5)
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .map { XtreamApi.normServer(it) }
+            .distinct()
+        if (servers.isEmpty()) {
+            log("Informe ao menos 1 servidor")
+            return
+        }
+        if (comboItems.isEmpty()) {
+            log("Carregue um combo antes")
+            return
+        }
+        val thr = threads.toIntOrNull()?.coerceIn(1, 64) ?: 20
+        running = true
+        paused = false
+        statusText = "Rodando"
+        hits.clear()
+        stats = ScanStats(totalCombo = comboItems.size, proxies = proxyCount)
+        engine.start(servers, comboItems, comboName, thr, mode, proxies)
+    }
+
+    fun togglePause() {
+        if (!running) return
+        if (paused) {
+            engine.resume()
+            paused = false
+            statusText = "Rodando"
+        } else {
+            engine.pause()
+            paused = true
+            statusText = "Pausado"
+        }
+    }
+
+    fun stop() {
+        engine.stop()
+        running = false
+        paused = false
+        statusText = "Parado"
+        log("Parado pelo usuario")
+    }
+
+    fun hitsPath(): String {
+        val pub = "/storage/emulated/0/Download/AScan_App/HITS"
+        return if (HitStorage.lastSavePath.isNotBlank()) HitStorage.lastSavePath
+        else pub
+    }
+}
