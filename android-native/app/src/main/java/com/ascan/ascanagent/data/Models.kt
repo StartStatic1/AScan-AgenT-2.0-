@@ -57,8 +57,8 @@ data class RemoteVersion(
 )
 
 object AppConfig {
-    const val VERSION = "2.0.10-native"
-    const val VERSION_CODE = 210
+    const val VERSION = "2.0.11-native"
+    const val VERSION_CODE = 211
     const val TELEGRAM = "https://t.me/+UfgoBcTQpwBlMDMx"
     const val REPO_OWNER = "StartStatic1"
     const val REPO_NAME = "AScan-AgenT-2.0-"
@@ -66,6 +66,8 @@ object AppConfig {
         "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/contents/combos"
     const val COMBOS_RAW =
         "https://raw.githubusercontent.com/$REPO_OWNER/$REPO_NAME/main/combos/"
+    const val PROXIES_API =
+        "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/contents/proxies"
     const val VERSION_URL =
         "https://raw.githubusercontent.com/$REPO_OWNER/$REPO_NAME/main/version.json"
 }
