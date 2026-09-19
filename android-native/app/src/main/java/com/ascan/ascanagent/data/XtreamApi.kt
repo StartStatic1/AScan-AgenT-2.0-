@@ -15,7 +15,6 @@ object XtreamApi {
 
     /** Agentes do Python + players IPTV reais (reduz 403 em varios painels) */
     private val uas = listOf(
-        // Players IPTV (prioridade — parecem clientes reais)
         "TiviMate/4.7.0 (Android 11; NVIDIA SHIELD TV Pro)",
         "TiviMate/5.1.0 (Android 13)",
         "TiviMate/5.0.2 (Linux; Android 12)",
@@ -33,7 +32,6 @@ object XtreamApi {
         "SS IPTV",
         "okhttp/4.12.0",
         "okhttp/5.2.0",
-        // Desktop / mobile browsers
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
@@ -44,7 +42,6 @@ object XtreamApi {
         "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36",
         "Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36",
         "Mozilla/5.0 (iPhone; CPU iPhone OS 17_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1",
-        // Smart TV / console
         "Mozilla/5.0 (Web0S; Linux/SmartTV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.79 Safari/537.36 WebAppManager",
         "Mozilla/5.0 (PlayStation 5; 6.50) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15",
         "Mozilla/5.0 (Linux; Android 11; BRAVIA 4K UR3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.88 Safari/537.36"
@@ -103,10 +100,8 @@ object XtreamApi {
             "http://$host/player_api.php?username=${enc(user)}&password=${enc(pass)}"
         val c = buildClient(timeoutSec, proxyUrl)
 
-        // 1ª tentativa
         var result = doRequest(c, url, nextUa())
 
-        // 403/429 → troca UA e tenta de novo (sem mudar proxy aqui)
         if (!result.hit && result.code in listOf(403, 429, 401)) {
             result = doRequest(c, url, nextUa())
         }
@@ -261,10 +256,21 @@ object XtreamApi {
         if (!proxyUrl.isNullOrBlank()) {
             try {
                 val raw = proxyUrl.trim()
-                val u = if ("://" in raw) java.net.URI(raw) else java.net.URI("http://$raw")
+                val isSocks = raw.startsWith("socks5://", true) ||
+                    raw.startsWith("socks4://", true) ||
+                    raw.startsWith("socks://", true)
+                val u = when {
+                    "://" in raw -> java.net.URI(raw)
+                    else -> java.net.URI("http://$raw")
+                }
                 val host = u.host ?: return b.build()
-                val port = if (u.port > 0) u.port else 80
-                b.proxy(java.net.Proxy(java.net.Proxy.Type.HTTP, java.net.InetSocketAddress(host, port)))
+                val port = when {
+                    u.port > 0 -> u.port
+                    isSocks -> 1080
+                    else -> 80
+                }
+                val type = if (isSocks) java.net.Proxy.Type.SOCKS else java.net.Proxy.Type.HTTP
+                b.proxy(java.net.Proxy(type, java.net.InetSocketAddress(host, port)))
             } catch (_: Exception) {
             }
         }

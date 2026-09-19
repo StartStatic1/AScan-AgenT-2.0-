@@ -188,40 +188,75 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private fun parseProxyLine(line: String, defaultScheme: String = "http"): String? {
+        val p = line.trim()
+        if (p.isEmpty() || p.startsWith("#") || ':' !in p || ' ' in p || p.length > 90) return null
+        return when {
+            p.startsWith("socks5://", true) || p.startsWith("socks4://", true) ||
+                p.startsWith("socks://", true) || p.startsWith("http://", true) ||
+                p.startsWith("https://", true) -> p
+            defaultScheme == "socks5" -> "socks5://$p"
+            else -> "http://$p"
+        }
+    }
+
     fun loadProxiesOnline() {
         if (proxyLoading) return
         viewModelScope.launch {
             proxyLoading = true
-            log("Baixando proxies...")
-            val urls = listOf(
-                "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=3000&country=all&ssl=all&anonymity=all",
-                "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=5000&country=BR,US,DE,NL,FR",
-                "https://raw.githubusercontent.com/mmpx12/proxy-list/master/http.txt",
-                "https://raw.githubusercontent.com/jetkai/proxy-list/main/online-proxies/txt/proxies-http.txt",
-                "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
-                "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt",
-                "https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt",
-                "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/http.txt",
-                "https://raw.githubusercontent.com/roosterkid/openproxylist/main/HTTPS_RAW.txt",
-                "https://raw.githubusercontent.com/proxifly/free-proxy-list/main/proxies/protocols/http/data.txt"
+            log("Baixando proxies (HTTP + SOCKS5)...")
+            // HTTP first (melhor com OkHttp), depois SOCKS5 das mesmas fontes do print
+            val sources = listOf(
+                // HTTP / HTTPS
+                "http" to "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=3000&country=all&ssl=all&anonymity=all",
+                "http" to "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=5000&country=BR,US,DE,NL,FR",
+                "http" to "https://raw.githubusercontent.com/mmpx12/proxy-list/master/http.txt",
+                "http" to "https://raw.githubusercontent.com/jetkai/proxy-list/main/online-proxies/txt/proxies-http.txt",
+                "http" to "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/http.txt",
+                "http" to "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt",
+                "http" to "https://raw.githubusercontent.com/clarketm/proxy-list/master/proxy-list-raw.txt",
+                "http" to "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/http.txt",
+                "http" to "https://raw.githubusercontent.com/roosterkid/openproxylist/main/HTTPS_RAW.txt",
+                "http" to "https://raw.githubusercontent.com/proxifly/free-proxy-list/main/proxies/protocols/http/data.txt",
+                // SOCKS5 (print do usuario + fontes extras)
+                "socks5" to "https://api.proxyscrape.com/v2/?request=getproxies&protocol=socks5",
+                "socks5" to "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=socks5&timeout=5000",
+                "socks5" to "https://raw.githubusercontent.com/jetkai/proxy-list/main/online-proxies/txt/proxies-socks5.txt",
+                "socks5" to "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/socks5.txt",
+                "socks5" to "https://raw.githubusercontent.com/TheSpeedX/SOCKS-List/master/socks5.txt",
+                "socks5" to "https://raw.githubusercontent.com/roosterkid/openproxylist/main/SOCKS5_RAW.txt",
+                "socks5" to "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/socks5.txt",
+                "socks5" to "https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@main/proxies/protocols/socks5/data.txt",
+                "socks5" to "https://raw.githubusercontent.com/hookzof/socks5_list/master/proxy.txt",
+                "socks5" to "https://raw.githubusercontent.com/prxchk/proxy-list/main/socks5.txt",
+                "socks5" to "https://gist.githubusercontent.com/Marlonwap/82199d4a0edb9ff8598e2bbfadde7faf/raw/"
             )
             val found = mutableListOf<String>()
             withContext(Dispatchers.IO) {
-                for (u in urls) {
-                    val t = XtreamApi.fetchText(u, 15) ?: continue
+                for ((scheme, u) in sources) {
+                    val t = XtreamApi.fetchText(u, 18) ?: continue
+                    var n = 0
                     t.lineSequence().forEach { line ->
-                        val p = line.trim()
-                        if (p.isNotEmpty() && ':' in p && !p.startsWith("#") && ' ' !in p && p.length < 60) {
-                            found += if ("://" in p) p else "http://$p"
-                        }
+                        val px = parseProxyLine(line, scheme) ?: return@forEach
+                        found += px
+                        n++
                     }
-                    if (found.size >= 1800) break
+                    if (n > 0) {
+                        // log leve no main depois
+                    }
+                    if (found.size >= 8000) break
                 }
             }
-            proxies = found.distinct().take(2000)
+            proxies = found.distinct().take(5000)
             proxyCount = proxies.size
             proxyLoading = false
-            log(if (proxyCount > 0) "OK Proxies prontos: $proxyCount" else "Nenhum proxy")
+            val httpN = proxies.count { it.startsWith("http", true) }
+            val socksN = proxies.count { it.startsWith("socks", true) }
+            log(
+                if (proxyCount > 0)
+                    "OK Proxies: $proxyCount (HTTP $httpN · SOCKS $socksN)"
+                else "Nenhum proxy"
+            )
         }
     }
 
@@ -236,11 +271,7 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
     fun applyProxyPaste(text: String) {
         val found = mutableListOf<String>()
         text.lineSequence().forEach { line ->
-            val p = line.trim()
-            if (p.isEmpty() || p.startsWith("#")) return@forEach
-            if (':' in p && ' ' !in p && p.length < 80) {
-                found += if ("://" in p) p else "http://$p"
-            }
+            parseProxyLine(line, "http")?.let { found += it }
         }
         proxies = found.distinct().take(5000)
         proxyCount = proxies.size
@@ -267,10 +298,7 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
                         if (!name.endsWith(".txt", true)) continue
                         val t = XtreamApi.fetchText(dl, 20) ?: continue
                         t.lineSequence().forEach { line ->
-                            val p = line.trim()
-                            if (p.isNotEmpty() && ':' in p && !p.startsWith("#") && ' ' !in p && p.length < 80) {
-                                found += if ("://" in p) p else "http://$p"
-                            }
+                            parseProxyLine(line, "http")?.let { found += it }
                         }
                     }
                 } catch (_: Exception) {

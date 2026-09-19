@@ -1,7 +1,7 @@
 {
-  "version": "2.0.10-native",
+  "version": "2.0.12-native",
   "min_version": "2.0.6-native",
   "force": false,
   "apk_url": "https://github.com/StartStatic1/AScan-AgenT-2.0-/releases/download/native-latest/AScan-Agent.apk",
-  "message": "2.0.10-native — build automatico #28. Toque em Atualizar no app."
+  "message": "2.0.12-native — mais fontes de proxy (HTTP+SOCKS5), suporte SOCKS no OkHttp, ate 5000 proxies."
 }
