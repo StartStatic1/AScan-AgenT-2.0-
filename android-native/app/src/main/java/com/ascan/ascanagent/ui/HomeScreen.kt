@@ -1,5 +1,7 @@
 package com.ascan.ascanagent.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -81,6 +83,12 @@ fun HomeScreen(vm: ScanViewModel) {
     )
     val scanning = vm.running
 
+    val pickCombo = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) vm.loadComboFromUri(uri)
+    }
+
     if (vm.showProxyPaste) {
         AlertDialog(
             onDismissRequest = { vm.showProxyPaste = false },
@@ -103,6 +111,32 @@ fun HomeScreen(vm: ScanViewModel) {
             },
             dismissButton = {
                 TextButton(onClick = { vm.showProxyPaste = false }) { Text("Cancelar") }
+            }
+        )
+    }
+
+    if (vm.showComboPaste) {
+        AlertDialog(
+            onDismissRequest = { vm.showComboPaste = false },
+            title = { Text("Colar combo") },
+            text = {
+                Column {
+                    Text("Cole user:pass (um por linha)", color = Muted, fontSize = 12.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = vm.comboPasteText,
+                        onValueChange = { vm.comboPasteText = it },
+                        modifier = Modifier.fillMaxWidth().height(200.dp),
+                        placeholder = { Text("user:pass\nuser2:pass2", color = Muted) },
+                        colors = fieldColors
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { vm.applyComboPaste(vm.comboPasteText) }) { Text("Usar combo") }
+            },
+            dismissButton = {
+                TextButton(onClick = { vm.showComboPaste = false }) { Text("Cancelar") }
             }
         )
     }
@@ -177,6 +211,10 @@ fun HomeScreen(vm: ScanViewModel) {
                         OutlinedTextField(value = vm.server2, onValueChange = { vm.server2 = it }, label = { Text("Servidor 2 (opcional)") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
                         Spacer(modifier = Modifier.height(6.dp))
                         OutlinedTextField(value = vm.server3, onValueChange = { vm.server3 = it }, label = { Text("Servidor 3 (opcional)") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        OutlinedTextField(value = vm.server4, onValueChange = { vm.server4 = it }, label = { Text("Servidor 4 (opcional)") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
+                        Spacer(modifier = Modifier.height(6.dp))
+                        OutlinedTextField(value = vm.server5, onValueChange = { vm.server5 = it }, label = { Text("Servidor 5 (opcional)") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
                         Spacer(modifier = Modifier.height(8.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(value = vm.threads, onValueChange = { vm.threads = it.filter { ch -> ch.isDigit() }.take(2) }, label = { Text("Threads") }, singleLine = true, modifier = Modifier.weight(1f), colors = fieldColors)
@@ -186,11 +224,20 @@ fun HomeScreen(vm: ScanViewModel) {
                 }
                 item {
                     CardBox {
-                        Text("COMBO ONLINE", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("COMBO", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("Online = GitHub · Celular = arquivo TXT · Colar = texto", color = Muted, fontSize = 10.sp)
                         Spacer(modifier = Modifier.height(8.dp))
                         var expanded by remember { mutableStateOf(false) }
                         ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
-                            OutlinedTextField(value = vm.selectedCombo.ifEmpty { "Selecione" }, onValueChange = {}, readOnly = true, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) }, modifier = Modifier.menuAnchor().fillMaxWidth(), colors = fieldColors)
+                            OutlinedTextField(
+                                value = vm.selectedCombo.ifEmpty { "Selecione online" },
+                                onValueChange = {},
+                                readOnly = true,
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+                                modifier = Modifier.menuAnchor().fillMaxWidth(),
+                                colors = fieldColors
+                            )
                             ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                                 vm.comboList.forEach { (name, _) ->
                                     DropdownMenuItem(text = { Text(name) }, onClick = { vm.selectedCombo = name; expanded = false })
@@ -198,16 +245,50 @@ fun HomeScreen(vm: ScanViewModel) {
                             }
                         }
                         Spacer(modifier = Modifier.height(8.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = { vm.loadSelectedCombo() }, enabled = !vm.loadingCombo, colors = ButtonDefaults.buttonColors(containerColor = Blue), modifier = Modifier.weight(1f)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Button(
+                                onClick = { vm.loadSelectedCombo() },
+                                enabled = !vm.loadingCombo,
+                                colors = ButtonDefaults.buttonColors(containerColor = Blue),
+                                modifier = Modifier.weight(1f)
+                            ) {
                                 if (vm.loadingCombo) CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = Color.White)
-                                else Text("USAR COMBO")
+                                else Text("Online", fontSize = 12.sp)
                             }
-                            Button(onClick = { vm.refreshCombos() }, colors = ButtonDefaults.buttonColors(containerColor = Card2), modifier = Modifier.weight(0.7f)) { Text("Atualizar") }
+                            Button(
+                                onClick = { pickCombo.launch("text/*") },
+                                enabled = !vm.loadingCombo,
+                                colors = ButtonDefaults.buttonColors(containerColor = Purple),
+                                modifier = Modifier.weight(1f)
+                            ) { Text("Celular", fontSize = 12.sp) }
+                            Button(
+                                onClick = { vm.showComboPaste = true },
+                                enabled = !vm.loadingCombo,
+                                colors = ButtonDefaults.buttonColors(containerColor = Card2),
+                                modifier = Modifier.weight(1f)
+                            ) { Text("Colar", fontSize = 12.sp) }
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Button(
+                                onClick = { vm.refreshCombos() },
+                                colors = ButtonDefaults.buttonColors(containerColor = Card2),
+                                modifier = Modifier.weight(1f)
+                            ) { Text("Atualizar lista", fontSize = 12.sp) }
+                            Button(
+                                onClick = { vm.clearCombo() },
+                                colors = ButtonDefaults.buttonColors(containerColor = Red.copy(alpha = 0.85f)),
+                                modifier = Modifier.weight(1f)
+                            ) { Text("Limpar combo", fontSize = 12.sp) }
                         }
                         if (vm.comboCount > 0) {
                             Spacer(modifier = Modifier.height(6.dp))
-                            Text("✓ ${vm.comboName} — ${vm.comboCount} credenciais", color = Green, fontSize = 13.sp)
+                            val src = when (vm.comboSource) {
+                                "local" -> "📱"
+                                "paste" -> "📋"
+                                else -> "☁"
+                            }
+                            Text("$src ${vm.comboName} — ${vm.comboCount} credenciais", color = Green, fontSize = 13.sp)
                         }
                     }
                 }
@@ -274,8 +355,8 @@ fun HomeScreen(vm: ScanViewModel) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     ActionBtn("PAUSAR", Orange, Modifier.weight(1f)) { vm.togglePause() }
                     ActionBtn("COPIAR", Blue, Modifier.weight(1f)) {
-                        clipboard.setText(AnnotatedString(vm.hits.joinToString("\n") { "${it.user}:${it.pass}" }))
-                        vm.log("Hits copiados")
+                        clipboard.setText(AnnotatedString(vm.hitsUserPass()))
+                        vm.log("Hits copiados (user:pass)")
                     }
                     ActionBtn("M3U", Card2, Modifier.weight(1f)) {
                         if (vm.lastM3u.isNotBlank()) {
@@ -283,6 +364,20 @@ fun HomeScreen(vm: ScanViewModel) {
                             vm.log("M3U copiado")
                         } else vm.log("Nenhum hit ainda")
                     }
+                }
+            }
+
+            item {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    ActionBtn("EXPORT", Purple, Modifier.weight(1f)) {
+                        val t = vm.hitsAsText()
+                        if (t.isBlank()) vm.log("Nenhum hit para exportar")
+                        else {
+                            clipboard.setText(AnnotatedString(t))
+                            vm.log("Hits completos copiados (${vm.hits.size})")
+                        }
+                    }
+                    ActionBtn("LIMPAR HITS", Card2, Modifier.weight(1f)) { vm.clearHits() }
                 }
             }
 
@@ -331,7 +426,7 @@ fun HomeScreen(vm: ScanViewModel) {
                                 line,
                                 color = when {
                                     line.startsWith("→") -> PurpleSoft
-                                    line.startsWith("✓") || line.startsWith("OK") -> Green
+                                    line.startsWith("✓") || line.startsWith("OK") || line.startsWith("📱") || line.startsWith("📋") || line.startsWith("☁") -> Green
                                     else -> Muted
                                 },
                                 fontSize = 12.sp,
