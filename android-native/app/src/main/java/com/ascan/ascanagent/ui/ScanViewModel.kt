@@ -1,6 +1,8 @@
 package com.ascan.ascanagent.ui
 
 import android.app.Application
+import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -21,6 +23,8 @@ import com.ascan.ascanagent.data.XtreamApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.BufferedReader
+import java.io.InputStreamReader
 
 class ScanViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -39,6 +43,7 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
     var comboItems: List<Credential> by mutableStateOf(emptyList())
     var comboList by mutableStateOf<List<Pair<String, String>>>(emptyList())
     var selectedCombo by mutableStateOf("")
+    var comboSource by mutableStateOf("")
 
     var proxyCount by mutableStateOf(0)
     var proxyLoading by mutableStateOf(false)
@@ -60,6 +65,8 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
 
     var showProxyPaste by mutableStateOf(false)
     var proxyPasteText by mutableStateOf("")
+    var showComboPaste by mutableStateOf(false)
+    var comboPasteText by mutableStateOf("")
 
     init {
         engine.onStats = { s ->
@@ -177,16 +184,106 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
             loadingCombo = true
             val text = withContext(Dispatchers.IO) { XtreamApi.fetchText(item.second) }
             if (text != null) {
-                comboItems = XtreamApi.parseCombo(text)
-                comboName = item.first
-                comboCount = comboItems.size
-                log("Combo: $comboName — $comboCount credenciais")
+                applyComboParsed(XtreamApi.parseCombo(text), item.first, "online")
             } else {
                 log("Falha ao baixar combo")
             }
             loadingCombo = false
         }
     }
+
+    fun loadComboFromUri(uri: Uri) {
+        viewModelScope.launch {
+            loadingCombo = true
+            log("Lendo combo do celular...")
+            val result = withContext(Dispatchers.IO) {
+                try {
+                    val cr = getApplication<Application>().contentResolver
+                    var displayName = "combo_local.txt"
+                    cr.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                        if (c.moveToFirst()) {
+                            val idx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                            if (idx >= 0) displayName = c.getString(idx) ?: displayName
+                        }
+                    }
+                    val list = ArrayList<Credential>(4096)
+                    cr.openInputStream(uri)?.use { input ->
+                        BufferedReader(InputStreamReader(input, Charsets.UTF_8)).use { br ->
+                            br.lineSequence().forEach { raw ->
+                                val line = raw.trim()
+                                if (line.isEmpty() || line.startsWith("#")) return@forEach
+                                val i = line.indexOf(':')
+                                if (i > 0) {
+                                    val u = line.substring(0, i).trim()
+                                    val p = line.substring(i + 1).trim()
+                                    if (u.isNotEmpty() && p.isNotEmpty()) list += Credential(u, p)
+                                }
+                            }
+                        }
+                    }
+                    list to displayName
+                } catch (e: Exception) {
+                    emptyList<Credential>() to ("erro: ${e.javaClass.simpleName}")
+                }
+            }
+            val (items, name) = result
+            if (items.isEmpty()) {
+                log("Combo local vazio ou inválido ($name)")
+            } else {
+                applyComboParsed(items, name, "local")
+            }
+            loadingCombo = false
+        }
+    }
+
+    fun applyComboPaste(text: String) {
+        viewModelScope.launch {
+            loadingCombo = true
+            val items = withContext(Dispatchers.IO) { XtreamApi.parseCombo(text) }
+            if (items.isEmpty()) {
+                log("Nenhuma credencial no texto colado")
+            } else {
+                applyComboParsed(items, "combo_colado.txt", "paste")
+            }
+            showComboPaste = false
+            comboPasteText = ""
+            loadingCombo = false
+        }
+    }
+
+    private fun applyComboParsed(items: List<Credential>, name: String, source: String) {
+        comboItems = items
+        comboName = name
+        comboCount = items.size
+        comboSource = source
+        selectedCombo = name
+        val tag = when (source) {
+            "local" -> "📱 Local"
+            "paste" -> "📋 Colado"
+            else -> "☁ Online"
+        }
+        log("$tag · $name — ${items.size} credenciais")
+    }
+
+    fun clearCombo() {
+        comboItems = emptyList()
+        comboCount = 0
+        comboName = ""
+        comboSource = ""
+        log("Combo limpo")
+    }
+
+    fun clearHits() {
+        hits.clear()
+        lastM3u = ""
+        log("Hits da tela limpos (arquivos no Download ficam)")
+    }
+
+    fun hitsAsText(): String =
+        hits.joinToString("\n\n") { it.text.ifBlank { "${it.user}:${it.pass}" } }
+
+    fun hitsUserPass(): String =
+        hits.joinToString("\n") { "${it.user}:${it.pass}" }
 
     private fun parseProxyLine(line: String, defaultScheme: String = "http"): String? {
         val p = line.trim()
@@ -205,9 +302,7 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             proxyLoading = true
             log("Baixando proxies (HTTP + SOCKS5)...")
-            // HTTP first (melhor com OkHttp), depois SOCKS5 das mesmas fontes do print
             val sources = listOf(
-                // HTTP / HTTPS
                 "http" to "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=3000&country=all&ssl=all&anonymity=all",
                 "http" to "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=5000&country=BR,US,DE,NL,FR",
                 "http" to "https://raw.githubusercontent.com/mmpx12/proxy-list/master/http.txt",
@@ -218,7 +313,6 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
                 "http" to "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/http.txt",
                 "http" to "https://raw.githubusercontent.com/roosterkid/openproxylist/main/HTTPS_RAW.txt",
                 "http" to "https://raw.githubusercontent.com/proxifly/free-proxy-list/main/proxies/protocols/http/data.txt",
-                // SOCKS5 (print do usuario + fontes extras)
                 "socks5" to "https://api.proxyscrape.com/v2/?request=getproxies&protocol=socks5",
                 "socks5" to "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=socks5&timeout=5000",
                 "socks5" to "https://raw.githubusercontent.com/jetkai/proxy-list/main/online-proxies/txt/proxies-socks5.txt",
@@ -235,14 +329,9 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
             withContext(Dispatchers.IO) {
                 for ((scheme, u) in sources) {
                     val t = XtreamApi.fetchText(u, 18) ?: continue
-                    var n = 0
                     t.lineSequence().forEach { line ->
                         val px = parseProxyLine(line, scheme) ?: return@forEach
                         found += px
-                        n++
-                    }
-                    if (n > 0) {
-                        // log leve no main depois
                     }
                     if (found.size >= 8000) break
                 }
@@ -267,7 +356,6 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
         log("Proxies limpos (direto)")
     }
 
-    /** Offline: cola lista ip:porta (gerador / txt local) */
     fun applyProxyPaste(text: String) {
         val found = mutableListOf<String>()
         text.lineSequence().forEach { line ->
@@ -280,7 +368,6 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
         log(if (proxyCount > 0) "Offline · $proxyCount proxies" else "Nenhum proxy válido no texto")
     }
 
-    /** Offline: baixa .txt da pasta proxies/ no GitHub */
     fun loadProxiesFromRepo() {
         if (proxyLoading) return
         viewModelScope.launch {
@@ -322,7 +409,7 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         if (comboItems.isEmpty()) {
-            log("Carregue um combo antes")
+            log("Carregue um combo (online, celular ou colar)")
             return
         }
         val thr = threads.toIntOrNull()?.coerceIn(1, 64) ?: 20
