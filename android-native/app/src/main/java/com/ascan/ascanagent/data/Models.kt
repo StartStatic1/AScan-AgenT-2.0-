@@ -56,13 +56,11 @@ enum class AtkMode(val label: String, val timeoutSec: Long, val delayMs: Long, v
     BYPASS("Bypass", 6, 120, 2)
 }
 
-/** Sequencial = 1 host por vez (estavel). Paralelo = todos os hosts ao mesmo tempo. */
 enum class ScanOrder(val label: String) {
     SEQUENCIAL("Sequencial"),
     PARALELO("Paralelo")
 }
 
-/** Fila = um combo após o outro. Misturado = todos juntos na mesma varredura. */
 enum class ComboMode(val label: String) {
     FILA("Fila (1 por vez)"),
     MISTURADO("Misturado")
@@ -83,8 +81,8 @@ data class RemoteVersion(
 )
 
 object AppConfig {
-    const val VERSION = "2.0.17-native"
-    const val VERSION_CODE = 217
+    const val VERSION = "2.0.18-native"
+    const val VERSION_CODE = 218
     const val TELEGRAM = "https://t.me/+UfgoBcTQpwBlMDMx"
     const val REPO_OWNER = "StartStatic1"
     const val REPO_NAME = "AScan-AgenT-2.0-"
