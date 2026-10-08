@@ -233,7 +233,7 @@ object XtreamApi {
             try {
                 val dias = ((exp.toLong() - System.currentTimeMillis() / 1000) / 86400).toInt()
                 if (dias > 3650) unlimited = true
-                else daysLeft = " · ${dias.coerceAtLeast(0)} dias"
+                else daysLeft = "${dias.coerceAtLeast(0)}"
             } catch (_: Exception) {
                 unlimited = true
             }
@@ -270,7 +270,7 @@ object XtreamApi {
             appendLine("📋 Plano  : $plan")
             appendLine("📶 Conex  : $conex")
             appendLine("📅 Criado : $createdS")
-            appendLine("⏰ Expira : $expS$daysLeft")
+            appendLine("⏰ Expira : $expS" + if (daysLeft.isNotBlank()) " · $daysLeft dias" else "")
             appendLine("────────────────────")
             appendLine("📺 M3U:")
             appendLine(m3u)
