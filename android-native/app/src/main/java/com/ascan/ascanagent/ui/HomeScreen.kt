@@ -367,10 +367,7 @@ fun HomeScreen(vm: ScanViewModel) {
                 item {
                     CardBox {
                         if (vm.comboCount > 0) {
-                            Text("✓ ${vm.comboName} — ${vm.comboCount} linhas", color = Green, fontSize = 13.sp)
-                            if (vm.stats.comboProgress.isNotBlank()) {
-                                Text(vm.stats.comboProgress, color = Orange, fontSize = 11.sp)
-                            }
+                            Text("✓ ${vm.comboCount} linhas carregadas", color = Green, fontSize = 13.sp)
                         }
                         Text(if (vm.proxyCount > 0) "Proxy · ${vm.proxyCount}" else "Direto (sem proxy)", color = Muted, fontSize = 12.sp)
                     }
@@ -445,11 +442,34 @@ fun HomeScreen(vm: ScanViewModel) {
 
             item {
                 CardBox {
-                    Text("HITS", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "HITS  " + vm.hits.size,
+                            color = Muted,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f)
+                        )
+                        if (vm.hits.isNotEmpty()) {
+                            TextButton(onClick = { vm.clearHits() }) {
+                                Text("Limpar tela", color = Muted, fontSize = 11.sp)
+                            }
+                        }
+                    }
                     Spacer(modifier = Modifier.height(6.dp))
-                    if (vm.hits.isEmpty()) Text("Nenhum hit ainda", color = Muted, fontSize = 12.sp)
-                    else vm.hits.take(30).forEach { h ->
-                        Text("${h.user}:${h.pass} · ${h.server}", color = Green, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                    if (vm.hits.isEmpty()) {
+                        Text("Nenhum hit ainda", color = Muted, fontSize = 12.sp)
+                    } else {
+                        vm.hits.take(40).forEach { h ->
+                            HitCard(h) {
+                                clipboard.setText(AnnotatedString("${h.user}:${h.pass}"))
+                                vm.log("Copiado: ${h.user}:${h.pass}")
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                        }
                     }
                 }
             }
@@ -462,6 +482,50 @@ fun HomeScreen(vm: ScanViewModel) {
                         Text(line, color = Text, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HitCard(h: Hit, onCopy: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Card2)
+            .border(1.dp, Line, RoundedCornerShape(12.dp))
+            .padding(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "${h.user}:${h.pass}",
+                    color = Green,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(h.server, color = PurpleSoft, fontSize = 11.sp)
+                val extra = buildList {
+                    if (h.status.isNotBlank()) add(h.status)
+                    if (h.plan.isNotBlank()) add(h.plan)
+                    if (h.connections.isNotBlank()) add(h.connections)
+                    if (h.expires.isNotBlank()) add("exp ${h.expires}")
+                    if (h.daysLeft.isNotBlank()) add("${h.daysLeft}d")
+                    if (h.unlimited) add("∞")
+                }.joinToString(" · ")
+                if (extra.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(extra, color = Muted, fontSize = 10.sp)
+                }
+            }
+            TextButton(onClick = onCopy) {
+                Text("Copiar", color = Blue, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             }
         }
     }
