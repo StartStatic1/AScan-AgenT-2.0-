@@ -11,8 +11,8 @@ android {
         applicationId = "com.ascan.ascanagent"
         minSdk = 24
         targetSdk = 34
-        versionCode = 215
-        versionName = "2.0.15-native"
+        versionCode = 216
+        versionName = "2.0.16-native"
     }
 
     signingConfigs {
