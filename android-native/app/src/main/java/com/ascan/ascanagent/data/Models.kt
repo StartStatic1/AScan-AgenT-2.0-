@@ -2,6 +2,12 @@ package com.ascan.ascanagent.data
 
 data class Credential(val user: String, val pass: String)
 
+data class ComboSlot(
+    val name: String,
+    val items: List<Credential>,
+    val source: String
+)
+
 data class Hit(
     val server: String,
     val user: String,
@@ -38,7 +44,8 @@ data class ScanStats(
     val progress: Float = 0f,
     val elapsedSec: Long = 0,
     val totalCombo: Int = 0,
-    val proxies: Int = 0
+    val proxies: Int = 0,
+    val comboProgress: String = ""
 )
 
 enum class AtkMode(val label: String, val timeoutSec: Long, val delayMs: Long, val retries: Int) {
@@ -53,6 +60,12 @@ enum class AtkMode(val label: String, val timeoutSec: Long, val delayMs: Long, v
 enum class ScanOrder(val label: String) {
     SEQUENCIAL("Sequencial"),
     PARALELO("Paralelo")
+}
+
+/** Fila = um combo após o outro. Misturado = todos juntos na mesma varredura. */
+enum class ComboMode(val label: String) {
+    FILA("Fila (1 por vez)"),
+    MISTURADO("Misturado")
 }
 
 data class ProbeResult(
@@ -70,11 +83,12 @@ data class RemoteVersion(
 )
 
 object AppConfig {
-    const val VERSION = "2.0.14-native"
-    const val VERSION_CODE = 214
+    const val VERSION = "2.0.15-native"
+    const val VERSION_CODE = 215
     const val TELEGRAM = "https://t.me/+UfgoBcTQpwBlMDMx"
     const val REPO_OWNER = "StartStatic1"
     const val REPO_NAME = "AScan-AgenT-2.0-"
+    const val MAX_COMBOS = 3
     const val COMBOS_API =
         "https://api.github.com/repos/$REPO_OWNER/$REPO_NAME/contents/combos"
     const val COMBOS_RAW =
