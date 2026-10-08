@@ -23,7 +23,8 @@ data class Hit(
 data class ServerStatus(
     val host: String,
     val state: String,
-    val hits: Int = 0
+    val hits: Int = 0,
+    val detail: String = ""
 )
 
 data class ScanStats(
@@ -48,6 +49,18 @@ enum class AtkMode(val label: String, val timeoutSec: Long, val delayMs: Long, v
     BYPASS("Bypass", 6, 120, 2)
 }
 
+/** Sequencial = 1 host por vez (estavel). Paralelo = todos os hosts ao mesmo tempo. */
+enum class ScanOrder(val label: String) {
+    SEQUENCIAL("Sequencial"),
+    PARALELO("Paralelo")
+}
+
+data class ProbeResult(
+    val host: String,
+    val state: String,
+    val detail: String
+)
+
 data class RemoteVersion(
     val version: String,
     val minVersion: String,
@@ -57,8 +70,8 @@ data class RemoteVersion(
 )
 
 object AppConfig {
-    const val VERSION = "2.0.13-native"
-    const val VERSION_CODE = 213
+    const val VERSION = "2.0.14-native"
+    const val VERSION_CODE = 214
     const val TELEGRAM = "https://t.me/+UfgoBcTQpwBlMDMx"
     const val REPO_OWNER = "StartStatic1"
     const val REPO_NAME = "AScan-AgenT-2.0-"
