@@ -114,28 +114,6 @@ fun HomeScreen(vm: ScanViewModel) {
         )
     }
 
-    if (vm.showComboPaste) {
-        AlertDialog(
-            onDismissRequest = { vm.showComboPaste = false },
-            title = { Text("Colar combo") },
-            text = {
-                Column {
-                    Text("Cole user:pass (um por linha)", color = Muted, fontSize = 12.sp)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = vm.comboPasteText,
-                        onValueChange = { vm.comboPasteText = it },
-                        modifier = Modifier.fillMaxWidth().height(200.dp),
-                        placeholder = { Text("user:pass\nuser2:pass2", color = Muted) },
-                        colors = fieldColors
-                    )
-                }
-            },
-            confirmButton = { TextButton(onClick = { vm.applyComboPaste(vm.comboPasteText) }) { Text("Usar combo") } },
-            dismissButton = { TextButton(onClick = { vm.showComboPaste = false }) { Text("Cancelar") } }
-        )
-    }
-
     if (vm.showUpdate && vm.updateInfo != null) {
         val info = vm.updateInfo!!
         AlertDialog(
@@ -219,46 +197,141 @@ fun HomeScreen(vm: ScanViewModel) {
                 }
                 item {
                     CardBox {
-                        Text("COMBO (até " + AppConfig.MAX_COMBOS + ")", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        val nLoaded = vm.loadedCombos.size
+                        Text(
+                            "COMBOS  " + nLoaded + "/" + AppConfig.MAX_COMBOS,
+                            color = Muted,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text("Online · Celular · Colar — cada um adiciona (máx " + AppConfig.MAX_COMBOS + ")", color = Muted, fontSize = 10.sp)
+                        Text(
+                            "Online ou Celular adiciona na lista (não substitui)",
+                            color = Muted,
+                            fontSize = 10.sp
+                        )
                         Spacer(modifier = Modifier.height(8.dp))
+
+                        for (slotIdx in 0 until AppConfig.MAX_COMBOS) {
+                            val slot = vm.loadedCombos.getOrNull(slotIdx)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(if (slot != null) Card2 else Input)
+                                    .border(1.dp, Line, RoundedCornerShape(10.dp))
+                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "${slotIdx + 1}/" + AppConfig.MAX_COMBOS,
+                                    color = PurpleSoft,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.width(36.dp)
+                                )
+                                if (slot != null) {
+                                    val src = when (slot.source) {
+                                        "local" -> "📱"
+                                        else -> "☁"
+                                    }
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            "$src ${slot.name}",
+                                            color = Green,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1
+                                        )
+                                        Text(
+                                            "${slot.items.size} linhas",
+                                            color = Muted,
+                                            fontSize = 10.sp
+                                        )
+                                    }
+                                    TextButton(onClick = { vm.removeCombo(slotIdx) }) {
+                                        Text("✕", color = Red, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                } else {
+                                    Text(
+                                        "vazio — use Online ou Celular",
+                                        color = Muted,
+                                        fontSize = 11.sp,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            }
+                            if (slotIdx < AppConfig.MAX_COMBOS - 1) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                            }
+                        }
+
+                        if (nLoaded > 0) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                "Total: ${vm.comboCount} linhas",
+                                color = Green,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
                         var expanded by remember { mutableStateOf(false) }
                         ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
-                            OutlinedTextField(value = vm.selectedCombo.ifEmpty { "Selecione online" }, onValueChange = {}, readOnly = true, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) }, modifier = Modifier.menuAnchor().fillMaxWidth(), colors = fieldColors)
+                            OutlinedTextField(
+                                value = vm.selectedCombo.ifEmpty { "Selecione online" },
+                                onValueChange = {},
+                                readOnly = true,
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
+                                modifier = Modifier.menuAnchor().fillMaxWidth(),
+                                colors = fieldColors
+                            )
                             ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                                 vm.comboList.forEach { (name, _) ->
-                                    DropdownMenuItem(text = { Text(name) }, onClick = { vm.selectedCombo = name; expanded = false })
+                                    DropdownMenuItem(
+                                        text = { Text(name) },
+                                        onClick = { vm.selectedCombo = name; expanded = false }
+                                    )
                                 }
                             }
                         }
                         Spacer(modifier = Modifier.height(8.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Button(onClick = { vm.loadSelectedCombo() }, enabled = !vm.loadingCombo && vm.loadedCombos.size < AppConfig.MAX_COMBOS, colors = ButtonDefaults.buttonColors(containerColor = Blue), modifier = Modifier.weight(1f)) {
-                                if (vm.loadingCombo) CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = Color.White)
-                                else Text("Online", fontSize = 12.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = { vm.loadSelectedCombo() },
+                                enabled = !vm.loadingCombo && nLoaded < AppConfig.MAX_COMBOS,
+                                colors = ButtonDefaults.buttonColors(containerColor = Blue),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                if (vm.loadingCombo) CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = Color.White
+                                ) else Text("Online", fontSize = 13.sp)
                             }
-                            Button(onClick = { pickCombo.launch("text/*") }, enabled = !vm.loadingCombo && vm.loadedCombos.size < AppConfig.MAX_COMBOS, colors = ButtonDefaults.buttonColors(containerColor = Purple), modifier = Modifier.weight(1f)) { Text("Celular", fontSize = 12.sp) }
-                            Button(onClick = { vm.showComboPaste = true }, enabled = !vm.loadingCombo && vm.loadedCombos.size < AppConfig.MAX_COMBOS, colors = ButtonDefaults.buttonColors(containerColor = Card2), modifier = Modifier.weight(1f)) { Text("Colar", fontSize = 12.sp) }
+                            Button(
+                                onClick = { pickCombo.launch("text/*") },
+                                enabled = !vm.loadingCombo && nLoaded < AppConfig.MAX_COMBOS,
+                                colors = ButtonDefaults.buttonColors(containerColor = Purple),
+                                modifier = Modifier.weight(1f)
+                            ) { Text("Celular", fontSize = 13.sp) }
                         }
                         Spacer(modifier = Modifier.height(6.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Button(onClick = { vm.refreshCombos() }, colors = ButtonDefaults.buttonColors(containerColor = Card2), modifier = Modifier.weight(1f)) { Text("Atualizar lista", fontSize = 12.sp) }
-                            Button(onClick = { vm.clearCombo() }, colors = ButtonDefaults.buttonColors(containerColor = Red.copy(alpha = 0.85f)), modifier = Modifier.weight(1f)) { Text("Limpar todos", fontSize = 12.sp) }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = { vm.refreshCombos() },
+                                colors = ButtonDefaults.buttonColors(containerColor = Card2),
+                                modifier = Modifier.weight(1f)
+                            ) { Text("Atualizar lista", fontSize = 12.sp) }
+                            Button(
+                                onClick = { vm.clearCombo() },
+                                colors = ButtonDefaults.buttonColors(containerColor = Red.copy(alpha = 0.85f)),
+                                modifier = Modifier.weight(1f)
+                            ) { Text("Limpar todos", fontSize = 12.sp) }
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                         ComboModeDropdown(vm, fieldColors, Modifier.fillMaxWidth())
-                        if (vm.loadedCombos.isNotEmpty()) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            vm.loadedCombos.forEachIndexed { idx, slot ->
-                                val src = when (slot.source) { "local" -> "📱"; "paste" -> "📋"; else -> "☁" }
-                                Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Text("$src ${slot.name} — ${slot.items.size}", color = Green, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                                    TextButton(onClick = { vm.removeCombo(idx) }) { Text("✕", color = Red, fontSize = 13.sp) }
-                                }
-                            }
-                            Text("Total: ${vm.comboCount} linhas · ${vm.comboMode.label}", color = Muted, fontSize = 11.sp)
-                        }
                     }
                 }
                 item {
