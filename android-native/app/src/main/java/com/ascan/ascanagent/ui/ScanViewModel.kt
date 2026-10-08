@@ -82,8 +82,6 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
 
     var showProxyPaste by mutableStateOf(false)
     var proxyPasteText by mutableStateOf("")
-    var showComboPaste by mutableStateOf(false)
-    var comboPasteText by mutableStateOf("")
 
     init {
         engine.onStats = { s ->
@@ -276,38 +274,29 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun applyComboPaste(text: String) {
-        viewModelScope.launch {
-            loadingCombo = true
-            val items = withContext(Dispatchers.IO) { XtreamApi.parseCombo(text) }
-            if (items.isEmpty()) log("Nenhuma credencial no texto colado")
-            else applyComboParsed(items, "combo_colado.txt", "paste")
-            showComboPaste = false
-            comboPasteText = ""
-            loadingCombo = false
-        }
-    }
-
     private fun applyComboParsed(items: List<Credential>, name: String, source: String) {
         if (items.isEmpty()) return
         if (loadedCombos.size >= AppConfig.MAX_COMBOS) {
             log("Máximo ${AppConfig.MAX_COMBOS} combos. Remova um antes.")
             return
         }
-        if (loadedCombos.any { it.name == name }) {
-            log("Combo \"$name\" já está na lista")
-            return
+        var finalName = name
+        if (loadedCombos.any { it.name == finalName }) {
+            finalName = "$name ($source)"
+            if (loadedCombos.any { it.name == finalName }) {
+                log("Combo \"$name\" já está na lista")
+                return
+            }
         }
-        val slot = ComboSlot(name = name, items = items, source = source)
+        val slot = ComboSlot(name = finalName, items = items, source = source)
         loadedCombos = loadedCombos + slot
         comboSource = source
         selectedCombo = name
         val tag = when (source) {
             "local" -> "📱 Local"
-            "paste" -> "📋 Colado"
             else -> "☁ Online"
         }
-        log("$tag · $name — ${items.size} credenciais  (${loadedCombos.size}/${AppConfig.MAX_COMBOS})")
+        log("$tag · $finalName — ${items.size}  (${loadedCombos.size}/${AppConfig.MAX_COMBOS})")
     }
 
     fun removeCombo(index: Int) {
@@ -450,7 +439,7 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         if (loadedCombos.isEmpty()) {
-            log("Carregue ao menos 1 combo (online, celular ou colar)")
+            log("Carregue ao menos 1 combo (Online ou Celular)")
             return
         }
         val thr = threads.toIntOrNull()?.coerceIn(1, 64) ?: 20
