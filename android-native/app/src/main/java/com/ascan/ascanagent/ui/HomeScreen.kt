@@ -166,7 +166,7 @@ fun HomeScreen(vm: ScanViewModel) {
                     CardBox {
                         Text("CONFIGURAÇÃO", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(8.dp))
-                        OutlinedTextField(value = vm.server1, onValueChange = { vm.server1 = it }, label = { Text("Servidor 1") }, placeholder = { Text("host:porta", color = Muted) }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
+                        OutlinedTextField(value = vm.server1, onValueChange = { vm.server1 = it }, label = { Text("Servidor 1") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
                         Spacer(modifier = Modifier.height(6.dp))
                         OutlinedTextField(value = vm.server2, onValueChange = { vm.server2 = it }, label = { Text("Servidor 2 (opcional)") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
                         Spacer(modifier = Modifier.height(6.dp))
@@ -183,12 +183,7 @@ fun HomeScreen(vm: ScanViewModel) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OrderDropdown(vm, fieldColors, Modifier.weight(1.2f))
-                            Button(
-                                onClick = { vm.testServers() },
-                                enabled = !vm.running && !vm.probing,
-                                colors = ButtonDefaults.buttonColors(containerColor = Orange),
-                                modifier = Modifier.weight(1f).height(56.dp)
-                            ) {
+                            Button(onClick = { vm.testServers() }, enabled = !vm.running && !vm.probing, colors = ButtonDefaults.buttonColors(containerColor = Orange), modifier = Modifier.weight(1f).height(56.dp)) {
                                 if (vm.probing) CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = Color.White)
                                 else Text("Testar hosts", fontSize = 13.sp)
                             }
@@ -204,10 +199,7 @@ fun HomeScreen(vm: ScanViewModel) {
                         Spacer(modifier = Modifier.height(8.dp))
                         for (slotIdx in 0 until AppConfig.MAX_COMBOS) {
                             val slot = vm.loadedCombos.getOrNull(slotIdx)
-                            Row(
-                                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (slot != null) Card2 else Input).border(1.dp, Line, RoundedCornerShape(10.dp)).padding(horizontal = 10.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
+                            Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (slot != null) Card2 else Input).border(1.dp, Line, RoundedCornerShape(10.dp)).padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text("${slotIdx + 1}/" + AppConfig.MAX_COMBOS, color = PurpleSoft, fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.width(36.dp))
                                 if (slot != null) {
                                     val src = when (slot.source) { "local" -> "📱"; else -> "☁" }
@@ -231,16 +223,13 @@ fun HomeScreen(vm: ScanViewModel) {
                         ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
                             OutlinedTextField(value = vm.selectedCombo.ifEmpty { "Selecione online" }, onValueChange = {}, readOnly = true, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) }, modifier = Modifier.menuAnchor().fillMaxWidth(), colors = fieldColors)
                             ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                                vm.comboList.forEach { (name, _) ->
-                                    DropdownMenuItem(text = { Text(name) }, onClick = { vm.selectedCombo = name; expanded = false })
-                                }
+                                vm.comboList.forEach { (name, _) -> DropdownMenuItem(text = { Text(name) }, onClick = { vm.selectedCombo = name; expanded = false }) }
                             }
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Button(onClick = { vm.loadSelectedCombo() }, enabled = !vm.loadingCombo && nLoaded < AppConfig.MAX_COMBOS, colors = ButtonDefaults.buttonColors(containerColor = Blue), modifier = Modifier.weight(1f)) {
-                                if (vm.loadingCombo) CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = Color.White)
-                                else Text("Online", fontSize = 13.sp)
+                                if (vm.loadingCombo) CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = Color.White) else Text("Online", fontSize = 13.sp)
                             }
                             Button(onClick = { pickCombo.launch("text/*") }, enabled = !vm.loadingCombo && nLoaded < AppConfig.MAX_COMBOS, colors = ButtonDefaults.buttonColors(containerColor = Purple), modifier = Modifier.weight(1f)) { Text("Celular", fontSize = 13.sp) }
                         }
@@ -257,19 +246,15 @@ fun HomeScreen(vm: ScanViewModel) {
                     CardBox {
                         Text("PROXY", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            when {
-                                vm.proxyLoading -> "Baixando proxies..."
-                                vm.proxyCount > 0 -> "Pronto · ${vm.proxyCount} proxies"
-                                else -> "Sem proxy (direto)"
-                            },
-                            color = when {
-                                vm.proxyLoading -> Orange
-                                vm.proxyCount > 0 -> Green
-                                else -> Muted
-                            },
-                            fontSize = 13.sp
-                        )
+                        Text(when {
+                            vm.proxyLoading -> "Baixando proxies..."
+                            vm.proxyCount > 0 -> "Pronto · ${vm.proxyCount} proxies"
+                            else -> "Sem proxy (direto)"
+                        }, color = when {
+                            vm.proxyLoading -> Orange
+                            vm.proxyCount > 0 -> Green
+                            else -> Muted
+                        }, fontSize = 13.sp)
                         Spacer(modifier = Modifier.height(8.dp))
                         Text("Online = net · Offline = colar TXT · Repo = pasta proxies/", color = Muted, fontSize = 10.sp)
                         Spacer(modifier = Modifier.height(8.dp))
@@ -308,8 +293,12 @@ fun HomeScreen(vm: ScanViewModel) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     ActionBtn("PAUSAR", Orange, Modifier.weight(1f)) { vm.togglePause() }
                     ActionBtn("COPIAR", Blue, Modifier.weight(1f)) {
-                        clipboard.setText(AnnotatedString(vm.hitsUserPass()))
-                        vm.log("Hits copiados (user:pass)")
+                        val all = vm.hits.joinToString("\n\n") { it.text.ifBlank { "${it.user}:${it.pass}" } }
+                        if (all.isBlank()) vm.log("Nenhum hit")
+                        else {
+                            clipboard.setText(AnnotatedString(all))
+                            vm.log("Hits completos copiados (${vm.hits.size})")
+                        }
                     }
                     ActionBtn("M3U", Card2, Modifier.weight(1f)) {
                         if (vm.lastM3u.isNotBlank()) {
@@ -366,8 +355,8 @@ fun HomeScreen(vm: ScanViewModel) {
                     if (vm.hits.isEmpty()) Text("Nenhum hit ainda", color = Muted, fontSize = 12.sp)
                     else vm.hits.take(40).forEach { h ->
                         HitCard(h) {
-                            clipboard.setText(AnnotatedString("${h.user}:${h.pass}"))
-                            vm.log("Copiado: ${h.user}:${h.pass}")
+                            clipboard.setText(AnnotatedString(h.text.ifBlank { "${h.user}:${h.pass}" }))
+                            vm.log("Hit completo copiado")
                         }
                         Spacer(modifier = Modifier.height(6.dp))
                     }
@@ -389,6 +378,12 @@ fun HomeScreen(vm: ScanViewModel) {
 
 @Composable
 private fun HitCard(h: Hit, onCopy: () -> Unit) {
+    val dias = h.daysLeft.filter { it.isDigit() }
+    val expLine = buildString {
+        append(h.expires)
+        if (dias.isNotEmpty()) append(" · $dias dias")
+        else if (h.unlimited) append(" · ∞")
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -402,29 +397,27 @@ private fun HitCard(h: Hit, onCopy: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                "${h.user}:${h.pass}",
+                "✅ HIT ${h.plan.ifBlank { "ONLINE" }}",
                 color = Green,
-                fontSize = 14.sp,
+                fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace,
                 modifier = Modifier.weight(1f)
             )
             TextButton(onClick = onCopy) {
                 Text("Copiar", color = Blue, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             }
         }
-        Text(h.server, color = PurpleSoft, fontSize = 12.sp)
-        val parts = mutableListOf<String>()
-        if (h.status.isNotBlank()) parts += h.status
-        if (h.plan.isNotBlank()) parts += h.plan
-        if (h.connections.isNotBlank()) parts += h.connections
-        if (h.expires.isNotBlank() && h.expires != "-") parts += "exp ${h.expires}"
-        val dias = h.daysLeft.filter { it.isDigit() }
-        if (dias.isNotEmpty()) parts += "$dias dias"
-        else if (h.unlimited) parts += "∞"
-        if (parts.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(3.dp))
-            Text(parts.joinToString(" · "), color = Muted, fontSize = 11.sp)
+        Spacer(modifier = Modifier.height(4.dp))
+        Text("🌐 ${h.server}", color = PurpleSoft, fontSize = 12.sp)
+        Text("👤 ${h.user}", color = Text, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+        Text("🔑 ${h.pass}", color = Text, fontSize = 13.sp, fontFamily = FontFamily.Monospace)
+        Spacer(modifier = Modifier.height(4.dp))
+        Text("🟢 ${h.status.ifBlank { "ONLINE" }}  ·  📋 ${h.plan.ifBlank { "-" }}  ·  📶 ${h.connections.ifBlank { "-" }}", color = Muted, fontSize = 11.sp)
+        if (h.created.isNotBlank() && h.created != "-") {
+            Text("📅 Criado ${h.created}", color = Muted, fontSize = 11.sp)
+        }
+        if (h.expires.isNotBlank() && h.expires != "-") {
+            Text("⏰ Expira $expLine", color = Muted, fontSize = 11.sp)
         }
     }
 }
