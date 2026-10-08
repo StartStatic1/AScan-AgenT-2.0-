@@ -14,13 +14,17 @@ import com.ascan.ascanagent.data.AtkMode
 import com.ascan.ascanagent.data.Credential
 import com.ascan.ascanagent.data.Hit
 import com.ascan.ascanagent.data.HitStorage
+import com.ascan.ascanagent.data.ProbeResult
 import com.ascan.ascanagent.data.RemoteVersion
+import com.ascan.ascanagent.data.ScanOrder
 import com.ascan.ascanagent.data.ScanStats
 import com.ascan.ascanagent.data.ScannerEngine
 import com.ascan.ascanagent.data.ServerStatus
 import com.ascan.ascanagent.data.UpdateChecker
 import com.ascan.ascanagent.data.XtreamApi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
@@ -38,6 +42,7 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
 
     var threads by mutableStateOf("20")
     var mode by mutableStateOf(AtkMode.ADAPTATIVO)
+    var scanOrder by mutableStateOf(ScanOrder.SEQUENCIAL)
     var comboName by mutableStateOf("")
     var comboCount by mutableStateOf(0)
     var comboItems: List<Credential> by mutableStateOf(emptyList())
@@ -51,8 +56,10 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
 
     var running by mutableStateOf(false)
     var paused by mutableStateOf(false)
+    var probing by mutableStateOf(false)
     var stats by mutableStateOf(ScanStats())
     var ranking by mutableStateOf<List<ServerStatus>>(emptyList())
+    var probeResults by mutableStateOf<List<ProbeResult>>(emptyList())
     var hits = mutableStateListOf<Hit>()
     var logs = mutableStateListOf<String>()
     var statusText by mutableStateOf("Pronto")
@@ -86,11 +93,8 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
                 try {
                     val path = HitStorage.save(getApplication(), h)
                     viewModelScope.launch(Dispatchers.Main.immediate) {
-                        if (path.isNotBlank()) {
-                            log("Salvo: ${path.substringAfterLast('/')}")
-                        } else {
-                            log("Hit OK (pasta app)")
-                        }
+                        if (path.isNotBlank()) log("Salvo: ${path.substringAfterLast('/')}")
+                        else log("Hit OK (pasta app)")
                     }
                 } catch (_: Exception) {
                 }
@@ -140,13 +144,8 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
             downloadProgress = 0
             downloadError = ""
             val err = withContext(Dispatchers.IO) {
-                UpdateChecker.downloadAndInstall(
-                    getApplication(),
-                    info.apkUrl
-                ) { p ->
-                    viewModelScope.launch(Dispatchers.Main.immediate) {
-                        downloadProgress = p
-                    }
+                UpdateChecker.downloadAndInstall(getApplication(), info.apkUrl) { p ->
+                    viewModelScope.launch(Dispatchers.Main.immediate) { downloadProgress = p }
                 }
             }
             if (err != null) {
@@ -166,14 +165,51 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
         if (logs.size > 80) logs.removeAt(logs.lastIndex)
     }
 
+    fun currentServers(): List<String> =
+        listOf(server1, server2, server3, server4, server5)
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .map { XtreamApi.normServer(it) }
+            .distinct()
+
+    fun testServers() {
+        val servers = currentServers()
+        if (servers.isEmpty()) {
+            log("Informe ao menos 1 servidor")
+            return
+        }
+        if (running || probing) return
+        viewModelScope.launch {
+            probing = true
+            statusText = "Testando"
+            log("Testando ${servers.size} servidor(es)...")
+            val results = withContext(Dispatchers.IO) {
+                servers.map { host -> async { XtreamApi.probeServer(host) } }.awaitAll()
+            }
+            probeResults = results
+            ranking = results.map {
+                ServerStatus(host = it.host, state = it.state, hits = 0, detail = it.detail)
+            }
+            results.forEach { r ->
+                val icon = when (r.state) {
+                    "ONLINE" -> "🟢"
+                    "PROT" -> "🟠"
+                    "TIMEOUT" -> "🟡"
+                    else -> "🔴"
+                }
+                log("$icon ${r.host} → ${r.state} (${r.detail})")
+            }
+            probing = false
+            statusText = "Pronto"
+        }
+    }
+
     fun refreshCombos() {
         viewModelScope.launch {
             loadingCombo = true
             val list = withContext(Dispatchers.IO) { XtreamApi.listGithubCombos() }
             comboList = list
-            if (selectedCombo.isEmpty() && list.isNotEmpty()) {
-                selectedCombo = list.first().first
-            }
+            if (selectedCombo.isEmpty() && list.isNotEmpty()) selectedCombo = list.first().first
             loadingCombo = false
         }
     }
@@ -183,11 +219,8 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             loadingCombo = true
             val text = withContext(Dispatchers.IO) { XtreamApi.fetchText(item.second) }
-            if (text != null) {
-                applyComboParsed(XtreamApi.parseCombo(text), item.first, "online")
-            } else {
-                log("Falha ao baixar combo")
-            }
+            if (text != null) applyComboParsed(XtreamApi.parseCombo(text), item.first, "online")
+            else log("Falha ao baixar combo")
             loadingCombo = false
         }
     }
@@ -227,11 +260,8 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
             val (items, name) = result
-            if (items.isEmpty()) {
-                log("Combo local vazio ou inválido ($name)")
-            } else {
-                applyComboParsed(items, name, "local")
-            }
+            if (items.isEmpty()) log("Combo local vazio ou inválido ($name)")
+            else applyComboParsed(items, name, "local")
             loadingCombo = false
         }
     }
@@ -240,11 +270,8 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             loadingCombo = true
             val items = withContext(Dispatchers.IO) { XtreamApi.parseCombo(text) }
-            if (items.isEmpty()) {
-                log("Nenhuma credencial no texto colado")
-            } else {
-                applyComboParsed(items, "combo_colado.txt", "paste")
-            }
+            if (items.isEmpty()) log("Nenhuma credencial no texto colado")
+            else applyComboParsed(items, "combo_colado.txt", "paste")
             showComboPaste = false
             comboPasteText = ""
             loadingCombo = false
@@ -341,11 +368,7 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
             proxyLoading = false
             val httpN = proxies.count { it.startsWith("http", true) }
             val socksN = proxies.count { it.startsWith("socks", true) }
-            log(
-                if (proxyCount > 0)
-                    "OK Proxies: $proxyCount (HTTP $httpN · SOCKS $socksN)"
-                else "Nenhum proxy"
-            )
+            log(if (proxyCount > 0) "OK Proxies: $proxyCount (HTTP $httpN · SOCKS $socksN)" else "Nenhum proxy")
         }
     }
 
@@ -388,8 +411,7 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
                             parseProxyLine(line, "http")?.let { found += it }
                         }
                     }
-                } catch (_: Exception) {
-                }
+                } catch (_: Exception) {}
             }
             proxies = found.distinct().take(5000)
             proxyCount = proxies.size
@@ -399,11 +421,7 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun start() {
-        val servers = listOf(server1, server2, server3, server4, server5)
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-            .map { XtreamApi.normServer(it) }
-            .distinct()
+        val servers = currentServers()
         if (servers.isEmpty()) {
             log("Informe ao menos 1 servidor")
             return
@@ -418,7 +436,7 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
         statusText = "Rodando"
         hits.clear()
         stats = ScanStats(totalCombo = comboItems.size, proxies = proxyCount)
-        engine.start(servers, comboItems, comboName, thr, mode, proxies)
+        engine.start(servers, comboItems, comboName, thr, mode, proxies, scanOrder)
     }
 
     fun togglePause() {
@@ -444,7 +462,6 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
 
     fun hitsPath(): String {
         val pub = "/storage/emulated/0/Download/AScan_App/HITS"
-        return if (HitStorage.lastSavePath.isNotBlank()) HitStorage.lastSavePath
-        else pub
+        return if (HitStorage.lastSavePath.isNotBlank()) HitStorage.lastSavePath else pub
     }
 }
