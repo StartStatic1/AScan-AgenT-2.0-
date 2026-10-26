@@ -46,6 +46,7 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
     var mode by mutableStateOf(AtkMode.ADAPTATIVO)
     var scanOrder by mutableStateOf(ScanOrder.SEQUENCIAL)
     var comboMode by mutableStateOf(ComboMode.FILA)
+    var scannerNick by mutableStateOf("")
 
     var loadedCombos by mutableStateOf<List<ComboSlot>>(emptyList())
     val comboCount: Int get() = loadedCombos.sumOf { it.items.size }
@@ -454,7 +455,7 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
         statusText = "Rodando"
         hits.clear()
         stats = ScanStats(totalCombo = comboCount, proxies = proxyCount)
-        engine.start(servers, loadedCombos, thr, mode, proxies, scanOrder, comboMode)
+        engine.start(servers, loadedCombos, thr, mode, proxies, scanOrder, comboMode, scannerNick.trim())
     }
 
     fun togglePause() {
