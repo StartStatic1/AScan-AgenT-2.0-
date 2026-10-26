@@ -1,7 +1,7 @@
 {
-  "version": "2.0.21-native",
+  "version": "2.0.22-native",
   "min_version": "2.0.6-native",
   "force": false,
   "apk_url": "https://github.com/StartStatic1/AScan-AgenT-2.0-/releases/download/native-latest/AScan-Agent.apk",
-  "message": "2.0.21-native \u2014 apelido no hit, servidores mais limpos, ranking com progresso, proxies ruins filtrados e combo mais tolerante."
+  "message": "2.0.22-native \u2014 PROT forte desiste mais cedo + detalhe 'tentando proxy'."
 }
