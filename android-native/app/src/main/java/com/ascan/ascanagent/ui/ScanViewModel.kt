@@ -340,7 +340,7 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
         if (proxyLoading) return
         viewModelScope.launch {
             proxyLoading = true
-            log("Baixando proxies (HTTP + SOCKS5)...")
+            log("Baixando e filtrando proxies...")
             val sources = listOf(
                 "http" to "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=3000&country=all&ssl=all&anonymity=all",
                 "http" to "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=5000&country=BR,US,DE,NL,FR",
@@ -361,26 +361,32 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
                 "socks5" to "https://raw.githubusercontent.com/ShiftyTR/Proxy-List/master/socks5.txt",
                 "socks5" to "https://cdn.jsdelivr.net/gh/proxifly/free-proxy-list@main/proxies/protocols/socks5/data.txt",
                 "socks5" to "https://raw.githubusercontent.com/hookzof/socks5_list/master/proxy.txt",
-                "socks5" to "https://raw.githubusercontent.com/prxchk/proxy-list/main/socks5.txt",
-                "socks5" to "https://gist.githubusercontent.com/Marlonwap/82199d4a0edb9ff8598e2bbfadde7faf/raw/"
+                "socks5" to "https://raw.githubusercontent.com/prxchk/proxy-list/main/socks5.txt"
             )
-            val found = mutableListOf<String>()
+            val raw = mutableListOf<String>()
             withContext(Dispatchers.IO) {
                 for ((scheme, u) in sources) {
                     val t = XtreamApi.fetchText(u, 18) ?: continue
                     t.lineSequence().forEach { line ->
                         val px = parseProxyLine(line, scheme) ?: return@forEach
-                        found += px
+                        raw += px
                     }
-                    if (found.size >= 8000) break
+                    if (raw.size >= 6000) break
                 }
             }
-            proxies = found.distinct().take(5000)
+            val candidates = raw.distinct().shuffled().take(400)
+            log("Testando ${candidates.size} proxies...")
+            val good = withContext(Dispatchers.IO) {
+                candidates.map { px ->
+                    async { if (XtreamApi.testProxy(px, 3)) px else null }
+                }.awaitAll().filterNotNull()
+            }
+            proxies = (good + raw.distinct().filter { it !in good }).distinct().take(2000)
             proxyCount = proxies.size
             proxyLoading = false
             val httpN = proxies.count { it.startsWith("http", true) }
             val socksN = proxies.count { it.startsWith("socks", true) }
-            log(if (proxyCount > 0) "OK Proxies: $proxyCount (HTTP $httpN · SOCKS $socksN)" else "Nenhum proxy")
+            log(if (proxyCount > 0) "Proxies OK: $proxyCount (testados ${good.size} bons) · HTTP $httpN · SOCKS $socksN" else "Nenhum proxy")
         }
     }
 
@@ -469,11 +475,5 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
         running = false
         paused = false
         statusText = "Parado"
-        log("Parado pelo usuario")
-    }
-
-    fun hitsPath(): String {
-        val pub = "/storage/emulated/0/Download/AScan_App/HITS"
-        return if (HitStorage.lastSavePath.isNotBlank()) HitStorage.lastSavePath else pub
     }
 }
