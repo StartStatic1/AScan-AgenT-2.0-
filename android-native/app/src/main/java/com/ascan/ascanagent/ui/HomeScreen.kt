@@ -31,6 +31,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -166,15 +167,17 @@ fun HomeScreen(vm: ScanViewModel) {
                     CardBox {
                         Text("CONFIGURAÇÃO", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(8.dp))
-                        OutlinedTextField(value = vm.server1, onValueChange = { vm.server1 = it }, label = { Text("Servidor 1") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
+                        OutlinedTextField(value = vm.scannerNick, onValueChange = { vm.scannerNick = it }, label = { Text("Apelido (opcional, sai no hit)") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(value = vm.server1, onValueChange = { vm.server1 = it }, label = { Text("Servidor") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
                         Spacer(modifier = Modifier.height(6.dp))
-                        OutlinedTextField(value = vm.server2, onValueChange = { vm.server2 = it }, label = { Text("Servidor 2 (opcional)") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
+                        OutlinedTextField(value = vm.server2, onValueChange = { vm.server2 = it }, placeholder = { Text("+") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
                         Spacer(modifier = Modifier.height(6.dp))
-                        OutlinedTextField(value = vm.server3, onValueChange = { vm.server3 = it }, label = { Text("Servidor 3 (opcional)") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
+                        OutlinedTextField(value = vm.server3, onValueChange = { vm.server3 = it }, placeholder = { Text("+") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
                         Spacer(modifier = Modifier.height(6.dp))
-                        OutlinedTextField(value = vm.server4, onValueChange = { vm.server4 = it }, label = { Text("Servidor 4 (opcional)") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
+                        OutlinedTextField(value = vm.server4, onValueChange = { vm.server4 = it }, placeholder = { Text("+") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
                         Spacer(modifier = Modifier.height(6.dp))
-                        OutlinedTextField(value = vm.server5, onValueChange = { vm.server5 = it }, label = { Text("Servidor 5 (opcional)") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
+                        OutlinedTextField(value = vm.server5, onValueChange = { vm.server5 = it }, placeholder = { Text("+") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
                         Spacer(modifier = Modifier.height(8.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedTextField(value = vm.threads, onValueChange = { vm.threads = it.filter { ch -> ch.isDigit() }.take(2) }, label = { Text("Threads") }, singleLine = true, modifier = Modifier.weight(1f), colors = fieldColors)
@@ -272,6 +275,7 @@ fun HomeScreen(vm: ScanViewModel) {
                     CardBox {
                         if (vm.comboCount > 0) Text("✓ ${vm.comboCount} linhas carregadas", color = Green, fontSize = 13.sp)
                         Text(if (vm.proxyCount > 0) "Proxy · ${vm.proxyCount}" else "Direto (sem proxy)", color = Muted, fontSize = 12.sp)
+                        if (vm.scannerNick.isNotBlank()) Text("Scan por: ${vm.scannerNick}", color = PurpleSoft, fontSize = 12.sp)
                     }
                 }
             }
@@ -338,10 +342,20 @@ fun HomeScreen(vm: ScanViewModel) {
                             "DONE" -> "⚪" to Muted
                             else -> "⚪" to Text
                         }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(icon, fontSize = 14.sp)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("${s.state} · ${s.host} · hits ${s.hits} ${s.detail}", color = color, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                        Column(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(icon, fontSize = 14.sp)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("${s.state} · ${s.host} · hits ${s.hits} ${s.detail}", color = color, fontSize = 12.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
+                            }
+                            if (s.progress > 0f) {
+                                LinearProgressIndicator(
+                                    progress = { s.progress },
+                                    modifier = Modifier.fillMaxWidth().height(4.dp).padding(top = 2.dp),
+                                    color = color.copy(alpha = 0.7f),
+                                    trackColor = Line
+                                )
+                            }
                         }
                     }
                 }
@@ -371,7 +385,7 @@ fun HomeScreen(vm: ScanViewModel) {
                 CardBox {
                     Text("LOG", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(6.dp))
-                    vm.logs.take(25).forEach { line ->
+                    vm.logs.take(15).forEach { line ->
                         Text(line, color = Text, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
                     }
                 }
@@ -422,6 +436,9 @@ private fun HitCard(h: Hit, onCopy: () -> Unit) {
         }
         if (h.expires.isNotBlank() && h.expires != "-") {
             Text("⏰ Expira $expLine", color = Muted, fontSize = 11.sp)
+        }
+        if (h.nick.isNotBlank() && h.nick != "-") {
+            Text("👤 ${h.nick}", color = PurpleSoft, fontSize = 11.sp)
         }
     }
 }
