@@ -330,15 +330,19 @@ fun HomeScreen(vm: ScanViewModel) {
                     Spacer(modifier = Modifier.height(6.dp))
                     if (vm.ranking.isEmpty()) Text("Sem dados ainda", color = Muted, fontSize = 12.sp)
                     else vm.ranking.forEach { s ->
-                        val color = when (s.state) {
-                            "ON", "ONLINE" -> Green
-                            "PROT" -> Orange
-                            "OFF", "TIMEOUT" -> Red
-                            "SCAN" -> PurpleSoft
-                            "DONE" -> Muted
-                            else -> Text
+                        val (icon, color) = when (s.state) {
+                            "ON", "ONLINE" -> "🟢" to Green
+                            "PROT" -> "🟠" to Orange
+                            "OFF", "TIMEOUT" -> "🔴" to Red
+                            "SCAN" -> "🔵" to PurpleSoft
+                            "DONE" -> "⚪" to Muted
+                            else -> "⚪" to Text
                         }
-                        Text("${s.state} · ${s.host} · hits ${s.hits} ${s.detail}", color = color, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(icon, fontSize = 14.sp)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("${s.state} · ${s.host} · hits ${s.hits} ${s.detail}", color = color, fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                        }
                     }
                 }
             }
