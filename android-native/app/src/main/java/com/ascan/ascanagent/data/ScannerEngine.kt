@@ -63,6 +63,7 @@ class ScannerEngine {
         val serverDetail = ConcurrentHashMap<String, String>()
         val useProxyFor = ConcurrentHashMap<String, Boolean>()
         val consecutiveTo = ConcurrentHashMap<String, AtomicInteger>()
+        val consecutive403 = ConcurrentHashMap<String, AtomicInteger>()
         val alive200 = ConcurrentHashMap<String, Boolean>()
         val badProxies = ConcurrentHashMap<String, AtomicInteger>()
         val stateMutex = Mutex()
@@ -75,6 +76,7 @@ class ScannerEngine {
             serverDetail[it] = ""
             useProxyFor[it] = false
             consecutiveTo[it] = AtomicInteger(0)
+            consecutive403[it] = AtomicInteger(0)
             alive200[it] = false
         }
 
@@ -165,6 +167,10 @@ class ScannerEngine {
                 onLog?.invoke("→ Pulando $server (OFF)")
                 return
             }
+            if (serverState[server] == "PROT_HARD") {
+                onLog?.invoke("→ Pulando $server (bloqueio forte)")
+                return
+            }
             stateMutex.withLock {
                 serverState[server] = "SCAN"
             }
@@ -184,6 +190,7 @@ class ScannerEngine {
                 scope.launch {
                     for (cred in channel) {
                         if (stopped.get()) break
+                        if (serverState[server] == "PROT_HARD") break
                         while (paused.get() && !stopped.get()) delay(200)
                         if (stopped.get()) break
                         val extraDelay = if ((consecutiveTo[server]?.get() ?: 0) > 4) mode.delayMs + 150 else mode.delayMs
@@ -208,7 +215,7 @@ class ScannerEngine {
                             stateMutex.withLock {
                                 if ((serverHits[server]?.get() ?: 0) == 0) {
                                     serverState[server] = "PROT"
-                                    serverDetail[server] = "bloqueio"
+                                    serverDetail[server] = "tentando proxy"
                                 }
                             }
                             val px = nextProxy()
@@ -243,6 +250,7 @@ class ScannerEngine {
                         when {
                             result.hit -> {
                                 consecutiveTo[server]?.set(0)
+                                consecutive403[server]?.set(0)
                                 alive200[server] = true
                                 val hit = XtreamApi.buildHit(
                                     server, cred.user, cred.pass, result.data, comboName, nick
@@ -258,12 +266,18 @@ class ScannerEngine {
                             }
                             result.code == 403 || result.err.contains("403") -> {
                                 consecutiveTo[server]?.set(0)
+                                val c403 = consecutive403[server]?.incrementAndGet() ?: 1
                                 e403.incrementAndGet()
                                 if (proxies.isNotEmpty()) useProxyFor[server] = true
                                 stateMutex.withLock {
                                     if ((serverHits[server]?.get() ?: 0) == 0) {
-                                        serverState[server] = "PROT"
-                                        serverDetail[server] = "403"
+                                        if (c403 >= 30) {
+                                            serverState[server] = "PROT_HARD"
+                                            serverDetail[server] = "bloqueio forte"
+                                        } else {
+                                            serverState[server] = "PROT"
+                                            serverDetail[server] = if (useProxyFor[server] == true) "proxy" else "403"
+                                        }
                                     }
                                 }
                             }
@@ -285,7 +299,7 @@ class ScannerEngine {
                                     (serverHits[server]?.get() ?: 0) == 0
                                 ) {
                                     stateMutex.withLock {
-                                        if (serverState[server] !in listOf("ON", "PROT")) {
+                                        if (serverState[server] !in listOf("ON", "PROT", "PROT_HARD")) {
                                             serverState[server] = "OFF"
                                             serverDetail[server] = "timeouts"
                                         }
@@ -294,6 +308,7 @@ class ScannerEngine {
                             }
                             result.code == 200 -> {
                                 consecutiveTo[server]?.set(0)
+                                consecutive403[server]?.set(0)
                                 alive200[server] = true
                                 stateMutex.withLock {
                                     if ((serverHits[server]?.get() ?: 0) == 0 &&
@@ -322,7 +337,7 @@ class ScannerEngine {
                         serverState[server] = "ON"
                         serverDetail[server] = "hits"
                     }
-                    serverState[server] == "PROT" -> {}
+                    serverState[server] == "PROT" || serverState[server] == "PROT_HARD" -> {}
                     serverState[server] == "OFF" -> {}
                     alive200[server] == true -> {
                         serverState[server] = "DONE"
@@ -347,10 +362,11 @@ class ScannerEngine {
             currentComboLabel = "Combo ${batchIdx + 1}/${batches.size}: ${batch.name}"
             onLog?.invoke("━━ $currentComboLabel (${batch.items.size} linhas) ━━")
             hosts.forEach { h ->
-                if ((serverHits[h]?.get() ?: 0) == 0 && serverState[h] != "OFF") {
+                if ((serverHits[h]?.get() ?: 0) == 0 && serverState[h] !in listOf("OFF", "PROT_HARD")) {
                     serverState[h] = if (order == ScanOrder.PARALELO) "SCAN" else "WAIT"
                 }
                 consecutiveTo[h]?.set(0)
+                consecutive403[h]?.set(0)
                 serverChecks[h]?.set(0)
             }
             if (order == ScanOrder.PARALELO) {
@@ -361,8 +377,8 @@ class ScannerEngine {
             } else {
                 for ((idx, server) in hosts.withIndex()) {
                     if (stopped.get()) break
-                    if (serverState[server] == "OFF" && (serverHits[server]?.get() ?: 0) == 0) {
-                        onLog?.invoke("→ Pulando $server (OFF)")
+                    if (serverState[server] in listOf("OFF", "PROT_HARD") && (serverHits[server]?.get() ?: 0) == 0) {
+                        onLog?.invoke("→ Pulando $server (${serverState[server]})")
                         continue
                     }
                     scanOneHost(server, idx, batch.items, batch.name)
