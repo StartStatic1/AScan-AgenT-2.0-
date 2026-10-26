@@ -144,6 +144,10 @@ class ScannerEngine {
 
         suspend fun scanOneHost(server: String, idx: Int, combo: List<Credential>, comboName: String) {
             if (stopped.get()) return
+            if (serverState[server] == "OFF" && (serverHits[server]?.get() ?: 0) == 0) {
+                onLog?.invoke("→ Pulando $server (OFF)")
+                return
+            }
             stateMutex.withLock {
                 serverState[server] = "SCAN"
             }
@@ -257,7 +261,7 @@ class ScannerEngine {
                             result.err.contains("Timeout", true) || result.code == 0 -> {
                                 timeouts.incrementAndGet()
                                 val cto = consecutiveTo[server]?.incrementAndGet() ?: 1
-                                if (cto >= 12 && alive200[server] != true &&
+                                if (cto >= 8 && alive200[server] != true &&
                                     (serverHits[server]?.get() ?: 0) == 0
                                 ) {
                                     stateMutex.withLock {
@@ -302,10 +306,10 @@ class ScannerEngine {
                     serverState[server] == "OFF" -> {}
                     alive200[server] == true -> {
                         serverState[server] = "DONE"
-                        serverDetail[server] = "sem hit no combo"
+                        serverDetail[server] = "sem hit"
                     }
                     else -> {
-                        if ((consecutiveTo[server]?.get() ?: 0) >= 8) {
+                        if ((consecutiveTo[server]?.get() ?: 0) >= 6) {
                             serverState[server] = "OFF"
                             serverDetail[server] = "sem resposta"
                         } else {
@@ -323,7 +327,7 @@ class ScannerEngine {
             currentComboLabel = "Combo ${batchIdx + 1}/${batches.size}: ${batch.name}"
             onLog?.invoke("━━ $currentComboLabel (${batch.items.size} linhas) ━━")
             hosts.forEach { h ->
-                if ((serverHits[h]?.get() ?: 0) == 0) {
+                if ((serverHits[h]?.get() ?: 0) == 0 && serverState[h] != "OFF") {
                     serverState[h] = if (order == ScanOrder.PARALELO) "SCAN" else "WAIT"
                 }
                 consecutiveTo[h]?.set(0)
@@ -336,6 +340,10 @@ class ScannerEngine {
             } else {
                 for ((idx, server) in hosts.withIndex()) {
                     if (stopped.get()) break
+                    if (serverState[server] == "OFF" && (serverHits[server]?.get() ?: 0) == 0) {
+                        onLog?.invoke("→ Pulando $server (OFF)")
+                        continue
+                    }
                     scanOneHost(server, idx, batch.items, batch.name)
                     if (idx < hosts.lastIndex && !stopped.get()) {
                         onLog?.invoke("→ Proximo host: ${hosts[idx + 1]}")
