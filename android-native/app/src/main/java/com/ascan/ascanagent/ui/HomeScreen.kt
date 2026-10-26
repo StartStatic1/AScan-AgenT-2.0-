@@ -337,6 +337,7 @@ fun HomeScreen(vm: ScanViewModel) {
                         val (icon, color) = when (s.state) {
                             "ON", "ONLINE" -> "🟢" to Green
                             "PROT" -> "🟠" to Orange
+                            "PROT_HARD" -> "🔴" to Red
                             "OFF", "TIMEOUT" -> "🔴" to Red
                             "SCAN" -> "🔵" to PurpleSoft
                             "DONE" -> "⚪" to Muted
