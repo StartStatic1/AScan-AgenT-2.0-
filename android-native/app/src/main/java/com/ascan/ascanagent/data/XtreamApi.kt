@@ -240,7 +240,8 @@ object XtreamApi {
         user: String,
         pass: String,
         data: JSONObject?,
-        combo: String
+        combo: String,
+        nick: String = ""
     ): Hit {
         val host = normServer(server)
         val ui = data?.optJSONObject("user_info")
@@ -282,6 +283,7 @@ object XtreamApi {
             "TRIAL" -> "HIT TRIAL"
             else -> "HIT ONLINE"
         }
+        val nickShow = nick.trim().ifBlank { "-" }
         val text = buildString {
             appendLine("✅ $head")
             appendLine("━━━━━━━━━━━━━━━━━━━━")
@@ -302,6 +304,7 @@ object XtreamApi {
             appendLine(epg)
             appendLine("────────────────────")
             appendLine("📁 Combo  : $comboShow")
+            appendLine("👤 Scan por: $nickShow")
             appendLine("✈️ Telegram: ${AppConfig.TELEGRAM}")
             appendLine("────────────────────")
             appendLine("AScan Agent ${AppConfig.VERSION}")
@@ -320,7 +323,8 @@ object XtreamApi {
             epg = epg,
             combo = comboShow,
             unlimited = unlimited,
-            text = text
+            text = text,
+            nick = nickShow
         )
     }
 
@@ -403,12 +407,13 @@ object XtreamApi {
     fun parseCombo(text: String): List<Credential> {
         val out = ArrayList<Credential>()
         text.lineSequence().forEach { raw ->
-            val line = raw.trim()
+            var line = raw.trim()
             if (line.isEmpty() || line.startsWith("#")) return@forEach
-            val idx = line.indexOf(':')
-            if (idx > 0) {
-                val u = line.substring(0, idx).trim()
-                val p = line.substring(idx + 1).trim()
+            line = line.replace('|', ':').replace(';', ':')
+            val parts = line.split(':')
+            if (parts.size >= 2) {
+                val u = parts[0].trim()
+                val p = parts[1].trim()
                 if (u.isNotEmpty() && p.isNotEmpty()) out += Credential(u, p)
             }
         }
