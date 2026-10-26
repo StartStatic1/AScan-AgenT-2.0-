@@ -90,54 +90,78 @@ object XtreamApi {
     fun probeServer(server: String, timeoutSec: Long = 6): ProbeResult {
         val host = normServer(server)
         if (host.isBlank()) return ProbeResult(host, "OFF", "vazio")
-        val urls = listOf(
-            "http://$host/player_api.php",
-            "http://$host/",
-            "https://$host/player_api.php"
+        val paths = listOf(
+            "/player_api.php",
+            "/",
+            "/get.php",
+            "/xmltv.php"
         )
+        val schemes = listOf("http", "https")
         var saw403 = false
         var sawTimeout = false
-        for (url in urls) {
-            try {
-                val c = buildClient(timeoutSec, null)
-                val req = Request.Builder()
-                    .url(url)
-                    .header("User-Agent", nextUa())
-                    .header("Accept", "application/json, text/plain, */*")
-                    .get()
-                    .build()
-                c.newCall(req).execute().use { resp ->
-                    val code = resp.code
-                    val body = resp.body?.string().orEmpty().take(400)
-                    when {
-                        code in listOf(403, 401, 429) -> {
-                            saw403 = true
-                        }
-                        code in 200..299 || code in listOf(404, 400, 302, 301) -> {
-                            val detail = when {
-                                body.contains("user_info", true) || body.contains("server_info", true) -> "API Xtream"
-                                body.contains("player_api", true) || code == 200 -> "HTTP $code"
-                                else -> "HTTP $code"
+        var sawAlive = false
+        var detail = ""
+
+        for (scheme in schemes) {
+            for (path in paths) {
+                val url = "$scheme://$host$path"
+                try {
+                    val c = buildClient(timeoutSec, null)
+                    val req = Request.Builder()
+                        .url(url)
+                        .header("User-Agent", nextUa())
+                        .header("Accept", "application/json, text/plain, */*")
+                        .get()
+                        .build()
+                    c.newCall(req).execute().use { resp ->
+                        val code = resp.code
+                        val body = resp.body?.string().orEmpty().take(300)
+                        when {
+                            code in listOf(403, 401, 429) -> {
+                                saw403 = true
+                                if (detail.isEmpty()) detail = "bloqueio $code"
                             }
-                            return ProbeResult(host, "ONLINE", detail)
-                        }
-                        else -> {
-                            if (code > 0) return ProbeResult(host, "ONLINE", "HTTP $code")
+                            code in 200..299 || code in listOf(404, 400, 302, 301, 500) -> {
+                                sawAlive = true
+                                detail = when {
+                                    body.contains("user_info", true) || body.contains("server_info", true) -> "API Xtream"
+                                    code == 200 -> "HTTP 200"
+                                    else -> "HTTP $code"
+                                }
+                                return ProbeResult(host, if (saw403) "PROT" else "ONLINE", detail)
+                            }
                         }
                     }
+                } catch (_: java.net.SocketTimeoutException) {
+                    sawTimeout = true
+                } catch (_: java.net.UnknownHostException) {
+                    return ProbeResult(host, "OFF", "DNS")
+                } catch (_: java.net.ConnectException) {
+                } catch (_: Exception) {
                 }
-            } catch (_: java.net.SocketTimeoutException) {
-                sawTimeout = true
-            } catch (_: java.net.UnknownHostException) {
-                return ProbeResult(host, "OFF", "DNS")
-            } catch (_: java.net.ConnectException) {
-            } catch (_: Exception) {
             }
         }
         return when {
-            saw403 -> ProbeResult(host, "PROT", "403/401/429")
+            sawAlive -> ProbeResult(host, "ONLINE", detail.ifBlank { "vivo" })
+            saw403 -> ProbeResult(host, "PROT", detail.ifBlank { "403/429" })
             sawTimeout -> ProbeResult(host, "TIMEOUT", "sem resposta")
             else -> ProbeResult(host, "OFF", "sem conexao")
+        }
+    }
+
+    fun testProxy(proxyUrl: String, timeoutSec: Long = 3): Boolean {
+        return try {
+            val c = buildClient(timeoutSec, proxyUrl)
+            val req = Request.Builder()
+                .url("http://httpbin.org/ip")
+                .header("User-Agent", "AScanAgent/${AppConfig.VERSION}")
+                .get()
+                .build()
+            c.newCall(req).execute().use { resp ->
+                resp.isSuccessful
+            }
+        } catch (_: Exception) {
+            false
         }
     }
 
