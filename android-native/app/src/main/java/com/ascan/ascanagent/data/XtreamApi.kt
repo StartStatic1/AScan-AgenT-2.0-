@@ -142,13 +142,14 @@ object XtreamApi {
         if (host.isBlank()) return ProbeResult(host, "OFF", "vazio")
         val paths = listOf(
             "/player_api.php",
-            "/",
             "/get.php",
-            "/xmltv.php"
+            "/xmltv.php",
+            "/"
         )
         val schemes = listOf("http", "https")
         var saw403 = false
         var sawTimeout = false
+        var sawXtream = false
         var sawAlive = false
         var detail = ""
 
@@ -165,20 +166,29 @@ object XtreamApi {
                         .build()
                     c.newCall(req).execute().use { resp ->
                         val code = resp.code
-                        val body = resp.body?.string().orEmpty().take(300)
+                        val body = resp.body?.string().orEmpty().take(400)
                         when {
                             code in listOf(403, 401, 429) -> {
                                 saw403 = true
                                 if (detail.isEmpty()) detail = "bloqueio $code"
                             }
-                            code in 200..299 || code in listOf(404, 400, 302, 301, 500) -> {
+                            code in 200..299 -> {
                                 sawAlive = true
+                                val looksXtream = body.contains("user_info", true) ||
+                                    body.contains("server_info", true) ||
+                                    body.contains("#EXTM3U", true) ||
+                                    body.contains("#EXTINF", true)
+                                if (looksXtream) sawXtream = true
                                 detail = when {
-                                    body.contains("user_info", true) || body.contains("server_info", true) -> "API Xtream"
+                                    looksXtream -> "Xtream"
                                     code == 200 -> "HTTP 200"
                                     else -> "HTTP $code"
                                 }
-                                return ProbeResult(host, if (saw403) "PROT" else "ONLINE", detail)
+                                if (sawXtream) return ProbeResult(host, "ONLINE", detail)
+                            }
+                            code in listOf(404, 400, 302, 301, 500) -> {
+                                sawAlive = true
+                                if (detail.isEmpty()) detail = "HTTP $code"
                             }
                         }
                     }
@@ -192,7 +202,8 @@ object XtreamApi {
             }
         }
         return when {
-            sawAlive -> ProbeResult(host, "ONLINE", detail.ifBlank { "vivo" })
+            sawXtream -> ProbeResult(host, "ONLINE", detail.ifBlank { "Xtream" })
+            sawAlive && !saw403 -> ProbeResult(host, "ONLINE", detail.ifBlank { "vivo" })
             saw403 -> ProbeResult(host, "PROT", detail.ifBlank { "403/429" })
             sawTimeout -> ProbeResult(host, "TIMEOUT", "sem resposta")
             else -> ProbeResult(host, "OFF", "sem conexao")
@@ -224,16 +235,21 @@ object XtreamApi {
         retries: Int = 1
     ): CheckResult {
         val host = normServer(server)
-        val url =
-            "http://$host/player_api.php?username=${enc(user)}&password=${enc(pass)}"
+        val apiUrl = "http://$host/player_api.php?username=${enc(user)}&password=${enc(pass)}"
+        val m3uUrl = "http://$host/get.php?username=${enc(user)}&password=${enc(pass)}&type=m3u_plus&output=ts"
         val c = buildClient(timeoutSec, proxyUrl)
 
         val attempts = retries.coerceIn(1, 4)
         var last = CheckResult(false, 0, "none", null)
         for (attempt in 0 until attempts) {
-            last = doRequest(c, url, nextUa())
+            last = doRequest(c, apiUrl, nextUa())
             if (last.hit) return last
-            if (last.code == 200 && !last.hit) return last
+            if (last.code == 200 && !last.hit) {
+                // JSON veio mas não é ativo — tenta M3U mesmo assim
+                val m3uHit = tryM3u(c, m3uUrl)
+                if (m3uHit) return CheckResult(true, 200, "hit_m3u", null)
+                return last
+            }
             if (attempt < attempts - 1 && (
                     last.code in listOf(403, 429, 401, 0) ||
                         last.err.contains("Timeout", true)
@@ -244,7 +260,32 @@ object XtreamApi {
                 break
             }
         }
+
+        // Fallback: se API não deu hit, tenta get.php (M3U)
+        if (!last.hit) {
+            val m3uHit = tryM3u(c, m3uUrl)
+            if (m3uHit) return CheckResult(true, 200, "hit_m3u", null)
+        }
         return last
+    }
+
+    private fun tryM3u(c: OkHttpClient, url: String): Boolean {
+        return try {
+            val req = Request.Builder()
+                .url(url)
+                .header("User-Agent", nextUa())
+                .header("Accept", "application/x-mpegurl, application/vnd.apple.mpegurl, */*")
+                .get()
+                .build()
+            c.newCall(req).execute().use { resp ->
+                if (resp.code != 200) return false
+                val body = resp.body?.string().orEmpty()
+                body.contains("#EXTM3U", ignoreCase = true) ||
+                    body.contains("#EXTINF", ignoreCase = true)
+            }
+        } catch (_: Exception) {
+            false
+        }
     }
 
     private fun doRequest(c: OkHttpClient, url: String, ua: String): CheckResult {
@@ -336,7 +377,7 @@ object XtreamApi {
         val nickShow = nick.trim().ifBlank { "-" }
         val text = buildString {
             appendLine("✅ $head")
-            appendLine("━━━━━━━━━━━━━━━━━━━━")
+            appendLine("━━━━━━━━━━━━━━━━━━━━━━━━")
             appendLine("🌐 Server : http://$host")
             appendLine("💻 DNS    : $hostOnly:$port")
             appendLine("────────────────────")
