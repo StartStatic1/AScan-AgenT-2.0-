@@ -87,6 +87,56 @@ object XtreamApi {
         val data: JSONObject?
     )
 
+    data class ServerFullInfo(
+        val live: Int,
+        val series: Int,
+        val vod: Int,
+        val timezone: String,
+        val protocol: String,
+        val rtmpPort: String,
+        val httpsPort: String,
+        val timeNow: String
+    )
+
+    fun fetchFullInfo(server: String, user: String, pass: String, timeoutSec: Long = 12): ServerFullInfo? {
+        val host = normServer(server)
+        val base = "http://$host/player_api.php?username=${enc(user)}&password=${enc(pass)}"
+        return try {
+            val c = buildClient(timeoutSec, null)
+            val apiReq = Request.Builder().url(base).header("User-Agent", nextUa()).get().build()
+            val apiBody = c.newCall(apiReq).execute().use { it.body?.string() } ?: return null
+            val json = JSONObject(apiBody)
+            val si = json.optJSONObject("server_info")
+            val tz = si?.optString("timezone", "-") ?: "-"
+            val proto = si?.optString("server_protocol", "http") ?: "http"
+            val rtmp = si?.optString("rtmp_port", "-") ?: "-"
+            val httpsP = si?.optString("https_port", "-") ?: "-"
+            val tnow = si?.optString("time_now", "-") ?: "-"
+
+            fun countAction(action: String): Int {
+                return try {
+                    val u = "$base&action=$action"
+                    val req = Request.Builder().url(u).header("User-Agent", nextUa()).get().build()
+                    val body = c.newCall(req).execute().use { it.body?.string() } ?: return 0
+                    if (body.trim().startsWith("[")) org.json.JSONArray(body).length() else 0
+                } catch (_: Exception) { 0 }
+            }
+
+            ServerFullInfo(
+                live = countAction("get_live_streams"),
+                series = countAction("get_series"),
+                vod = countAction("get_vod_streams"),
+                timezone = tz,
+                protocol = proto,
+                rtmpPort = rtmp,
+                httpsPort = httpsP,
+                timeNow = tnow
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     fun probeServer(server: String, timeoutSec: Long = 6): ProbeResult {
         val host = normServer(server)
         if (host.isBlank()) return ProbeResult(host, "OFF", "vazio")
