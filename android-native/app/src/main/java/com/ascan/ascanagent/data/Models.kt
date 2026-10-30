@@ -24,6 +24,9 @@ data class Hit(
     val unlimited: Boolean,
     val text: String,
     val nick: String = "",
+    val liveCount: Int = -1,
+    val seriesCount: Int = -1,
+    val vodCount: Int = -1,
     val timeMs: Long = System.currentTimeMillis()
 )
 
@@ -83,8 +86,8 @@ data class RemoteVersion(
 )
 
 object AppConfig {
-    const val VERSION = "2.0.22-native"
-    const val VERSION_CODE = 222
+    const val VERSION = "2.0.23-native"
+    const val VERSION_CODE = 223
     const val TELEGRAM = "https://t.me/+UfgoBcTQpwBlMDMx"
     const val REPO_OWNER = "StartStatic1"
     const val REPO_NAME = "AScan-AgenT-2.0-"
