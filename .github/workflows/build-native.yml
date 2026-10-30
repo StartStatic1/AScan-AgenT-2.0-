@@ -64,7 +64,6 @@ jobs:
           path: /tmp/release/AScan-Agent.apk
           if-no-files-found: error
 
-      # Release fixo: tag native-latest sempre atualizada (link estavel pro app)
       - name: Publish native-latest release
         uses: softprops/action-gh-release@v2
         with:
@@ -85,9 +84,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # Atualiza version.json na raiz (nao re-dispara este workflow)
       - name: Update version.json
         working-directory: .
+        continue-on-error: true
         run: |
           VER="${{ steps.apk.outputs.version }}"
           cat > version.json << EOF
@@ -103,4 +102,5 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add version.json
           git diff --staged --quiet || git commit -m "chore: version.json → $VER (build ${{ github.run_number }})"
-          git push origin HEAD:main
+          git pull --rebase origin main || true
+          git push origin HEAD:main || echo "push skipped"
