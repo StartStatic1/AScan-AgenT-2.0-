@@ -557,3 +557,4 @@ private fun ComboModeDropdown(vm: ScanViewModel, fieldColors: androidx.compose.m
         }
     }
 }
+// restored
