@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.ascan.ascanagent.ScanService
 import com.ascan.ascanagent.data.AppConfig
 import com.ascan.ascanagent.data.AtkMode
 import com.ascan.ascanagent.data.ComboMode
@@ -120,6 +121,7 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
                 running = false
                 paused = false
                 statusText = "Parado"
+                ScanService.stop(getApplication())
             }
         }
         refreshCombos()
@@ -132,7 +134,7 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
             if (UpdateChecker.isNewer(remote.version)) {
                 updateInfo = remote
                 showUpdate = true
-                log("Update: ${remote.version} — ${remote.message}")
+                log("Update: ${remote.version} \u2014 ${remote.message}")
             }
         }
     }
@@ -163,7 +165,7 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
                 log("Update falhou: $err")
             } else {
                 downloadProgress = 100
-                log("APK baixado — confirme a instalação")
+                log("APK baixado \u2014 confirme a instala\u00e7\u00e3o")
                 showUpdate = false
             }
         }
@@ -201,12 +203,12 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
             }
             results.forEach { r ->
                 val icon = when (r.state) {
-                    "ONLINE" -> "🟢"
-                    "PROT" -> "🟠"
-                    "TIMEOUT" -> "🟡"
-                    else -> "🔴"
+                    "ONLINE" -> "\ud83d\udfe2"
+                    "PROT" -> "\ud83d\udfe0"
+                    "TIMEOUT" -> "\ud83d\udfe1"
+                    else -> "\ud83d\udd34"
                 }
-                log("$icon ${r.host} → ${r.state} (${r.detail})")
+                log("$icon ${r.host} \u2192 ${r.state} (${r.detail})")
             }
             probing = false
             statusText = "Pronto"
@@ -269,7 +271,7 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
             val (items, name) = result
-            if (items.isEmpty()) log("Combo local vazio ou inválido ($name)")
+            if (items.isEmpty()) log("Combo local vazio ou inv\u00e1lido ($name)")
             else applyComboParsed(items, name, "local")
             loadingCombo = false
         }
@@ -278,14 +280,14 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
     private fun applyComboParsed(items: List<Credential>, name: String, source: String) {
         if (items.isEmpty()) return
         if (loadedCombos.size >= AppConfig.MAX_COMBOS) {
-            log("Máximo ${AppConfig.MAX_COMBOS} combos. Remova um antes.")
+            log("M\u00e1ximo ${AppConfig.MAX_COMBOS} combos. Remova um antes.")
             return
         }
         var finalName = name
         if (loadedCombos.any { it.name == finalName }) {
             finalName = "$name ($source)"
             if (loadedCombos.any { it.name == finalName }) {
-                log("Combo \"$name\" já está na lista")
+                log("Combo \"$name\" j\u00e1 est\u00e1 na lista")
                 return
             }
         }
@@ -294,10 +296,10 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
         comboSource = source
         selectedCombo = name
         val tag = when (source) {
-            "local" -> "📱 Local"
-            else -> "☁ Online"
+            "local" -> "\ud83d\udcf1 Local"
+            else -> "\u2601 Online"
         }
-        log("$tag · $finalName — ${items.size}  (${loadedCombos.size}/${AppConfig.MAX_COMBOS})")
+        log("$tag \u00b7 $finalName \u2014 ${items.size}  (${loadedCombos.size}/${AppConfig.MAX_COMBOS})")
     }
 
     fun removeCombo(index: Int) {
@@ -387,7 +389,7 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
             proxyLoading = false
             val httpN = proxies.count { it.startsWith("http", true) }
             val socksN = proxies.count { it.startsWith("socks", true) }
-            log(if (proxyCount > 0) "Proxies OK: $proxyCount (testados ${good.size} bons) · HTTP $httpN · SOCKS $socksN" else "Nenhum proxy")
+            log(if (proxyCount > 0) "Proxies OK: $proxyCount (testados ${good.size} bons) \u00b7 HTTP $httpN \u00b7 SOCKS $socksN" else "Nenhum proxy")
         }
     }
 
@@ -407,14 +409,14 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
         proxyCount = proxies.size
         showProxyPaste = false
         proxyPasteText = ""
-        log(if (proxyCount > 0) "Offline · $proxyCount proxies" else "Nenhum proxy válido no texto")
+        log(if (proxyCount > 0) "Offline \u00b7 $proxyCount proxies" else "Nenhum proxy v\u00e1lido no texto")
     }
 
     fun loadProxiesFromRepo() {
         if (proxyLoading) return
         viewModelScope.launch {
             proxyLoading = true
-            log("Carregando proxies do repositório...")
+            log("Carregando proxies do reposit\u00f3rio...")
             val found = mutableListOf<String>()
             withContext(Dispatchers.IO) {
                 val body = XtreamApi.fetchText(AppConfig.PROXIES_API, 20) ?: return@withContext
@@ -435,7 +437,7 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
             proxies = found.distinct().take(5000)
             proxyCount = proxies.size
             proxyLoading = false
-            log(if (proxyCount > 0) "Repo · $proxyCount proxies" else "Nenhum .txt em /proxies")
+            log(if (proxyCount > 0) "Repo \u00b7 $proxyCount proxies" else "Nenhum .txt em /proxies")
         }
     }
 
@@ -455,6 +457,7 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
         statusText = "Rodando"
         hits.clear()
         stats = ScanStats(totalCombo = comboCount, proxies = proxyCount)
+        try { ScanService.start(getApplication()) } catch (_: Exception) {}
         engine.start(servers, loadedCombos, thr, mode, proxies, scanOrder, comboMode, scannerNick.trim())
     }
 
@@ -476,5 +479,6 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
         running = false
         paused = false
         statusText = "Parado"
+        try { ScanService.stop(getApplication()) } catch (_: Exception) {}
     }
 }
