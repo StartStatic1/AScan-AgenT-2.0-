@@ -232,11 +232,13 @@ object XtreamApi {
         pass: String,
         timeoutSec: Long = 5,
         proxyUrl: String? = null,
-        retries: Int = 1
+        retries: Int = 2
     ): CheckResult {
         val host = normServer(server)
         val apiUrl = "http://$host/player_api.php?username=${enc(user)}&password=${enc(pass)}"
         val m3uUrl = "http://$host/get.php?username=${enc(user)}&password=${enc(pass)}&type=m3u_plus&output=ts"
+        val m3uHls = "http://$host/get.php?username=${enc(user)}&password=${enc(pass)}&type=m3u_plus&output=hls"
+        val portalUrl = "http://$host/portal.php?username=${enc(user)}&password=${enc(pass)}"
         val c = buildClient(timeoutSec, proxyUrl)
 
         val attempts = retries.coerceIn(1, 4)
@@ -261,10 +263,14 @@ object XtreamApi {
             }
         }
 
-        // Fallback: se API não deu hit, tenta get.php (M3U)
+        // Fallback: se API não deu hit, tenta vários endpoints
         if (!last.hit) {
             val m3uHit = tryM3u(c, m3uUrl)
             if (m3uHit) return CheckResult(true, 200, "hit_m3u", null)
+            val hlsHit = tryM3u(c, m3uHls)
+            if (hlsHit) return CheckResult(true, 200, "hit_hls", null)
+            val portalHit = tryM3u(c, portalUrl)
+            if (portalHit) return CheckResult(true, 200, "hit_portal", null)
         }
         return last
     }
