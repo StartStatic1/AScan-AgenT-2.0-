@@ -188,15 +188,24 @@ fun HomeScreen(vm: ScanViewModel) {
                         Spacer(modifier = Modifier.height(6.dp))
                         OutlinedTextField(value = vm.scannerNick, onValueChange = { vm.scannerNick = it }, label = { Text("Apelido") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
                         Spacer(modifier = Modifier.height(6.dp))
-                        OutlinedTextField(value = vm.server1, onValueChange = { vm.server1 = it }, label = { Text("Servidor") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        OutlinedTextField(value = vm.server2, onValueChange = { vm.server2 = it }, placeholder = { Text("+") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        OutlinedTextField(value = vm.server3, onValueChange = { vm.server3 = it }, placeholder = { Text("+") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        OutlinedTextField(value = vm.server4, onValueChange = { vm.server4 = it }, placeholder = { Text("+") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        OutlinedTextField(value = vm.server5, onValueChange = { vm.server5 = it }, placeholder = { Text("+") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fieldColors)
+                        var serversText by remember { mutableStateOf(listOf(vm.server1, vm.server2, vm.server3, vm.server4, vm.server5).filter { it.isNotBlank() }.joinToString("\n")) }
+                        OutlinedTextField(
+                            value = serversText,
+                            onValueChange = { v ->
+                                serversText = v
+                                val lines = v.lines().map { it.trim() }.filter { it.isNotEmpty() }
+                                vm.server1 = lines.getOrNull(0) ?: ""
+                                vm.server2 = lines.getOrNull(1) ?: ""
+                                vm.server3 = lines.getOrNull(2) ?: ""
+                                vm.server4 = lines.getOrNull(3) ?: ""
+                                vm.server5 = lines.getOrNull(4) ?: ""
+                            },
+                            label = { Text("Servidores (um por linha)") },
+                            placeholder = { Text("host:porta", color = Muted) },
+                            modifier = Modifier.fillMaxWidth().height(100.dp),
+                            colors = fieldColors,
+                            maxLines = 5
+                        )
                         Spacer(modifier = Modifier.height(6.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             OutlinedTextField(value = vm.threads, onValueChange = { vm.threads = it.filter { ch -> ch.isDigit() }.take(2) }, label = { Text("Thr") }, singleLine = true, modifier = Modifier.weight(1f), colors = fieldColors)

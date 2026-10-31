@@ -369,7 +369,7 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
             val raw = mutableListOf<String>()
             withContext(Dispatchers.IO) {
                 for ((scheme, u) in sources) {
-                    val t = XtreamApi.fetchText(u, 18) ?: continue
+                    val t = XtreamApi.fetchText(u, 10) ?: continue
                     t.lineSequence().forEach { line ->
                         val px = parseProxyLine(line, scheme) ?: return@forEach
                         raw += px
@@ -377,11 +377,11 @@ class ScanViewModel(app: Application) : AndroidViewModel(app) {
                     if (raw.size >= 6000) break
                 }
             }
-            val candidates = raw.distinct().shuffled().take(400)
+            val candidates = raw.distinct().shuffled().take(80)
             log("Testando ${candidates.size} proxies...")
             val good = withContext(Dispatchers.IO) {
                 candidates.map { px ->
-                    async { if (XtreamApi.testProxy(px, 3)) px else null }
+                    async { if (XtreamApi.testProxy(px, 2)) px else null }
                 }.awaitAll().filterNotNull()
             }
             proxies = (good + raw.distinct().filter { it !in good }).distinct().take(2000)
