@@ -285,9 +285,14 @@ object XtreamApi {
                 .build()
             c.newCall(req).execute().use { resp ->
                 if (resp.code != 200) return false
-                val body = resp.body?.string().orEmpty()
-                body.contains("#EXTM3U", ignoreCase = true) ||
-                    body.contains("#EXTINF", ignoreCase = true)
+                val body = resp.body ?: return false
+                // só lê os primeiros 8KB para não estourar memória com M3U grande
+                val buf = ByteArray(8192)
+                val n = body.byteStream().read(buf)
+                if (n <= 0) return false
+                val head = String(buf, 0, n, Charsets.UTF_8)
+                head.contains("#EXTM3U", ignoreCase = true) ||
+                    head.contains("#EXTINF", ignoreCase = true)
             }
         } catch (_: Exception) {
             false
